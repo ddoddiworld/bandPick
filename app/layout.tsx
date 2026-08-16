@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Bandpick",
-  description: "우리 밴드의 다음 합주곡을 함께 정하는 공간",
+  title: "피자브레이크타임 | Monthly Picks",
+  description: "피자브레이크타임 멤버들이 매달 합주곡을 함께 고르는 공간",
   icons: {
     icon: "/favicon.svg",
     shortcut: "/favicon.svg",

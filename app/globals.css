@@ -1,8 +1,8 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f6f5fb;
-  --foreground: #171717;
+  --background: #fff6df;
+  --foreground: #2d2118;
 }
 
 @theme inline {
@@ -16,4 +16,48 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+}
+
+button,
+a,
+input,
+textarea {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+textarea:focus-visible {
+  outline: 3px solid rgba(230, 95, 60, 0.45);
+  outline-offset: 3px;
+}
+
+button {
+  cursor: pointer;
+}
+
+.pizza-checks {
+  background-color: #fff6df;
+  background-image: conic-gradient(
+    #c7442c 25%,
+    #fff6df 0 50%,
+    #c7442c 0 75%,
+    #fff6df 0
+  );
+  background-size: 28px 28px;
+}
+
+.pizza-hero::after {
+  position: absolute;
+  right: -3rem;
+  bottom: -5rem;
+  width: 13rem;
+  height: 13rem;
+  border: 2px solid #2d2118;
+  border-radius: 999px;
+  background: #ffd85c;
+  content: "";
+  opacity: 0.18;
+  pointer-events: none;
 }

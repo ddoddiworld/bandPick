@@ -1,4 +1,4 @@
-# BandPick 기술 구조
+# 피자브레이크타임 Monthly Picks 기술 구조
 
 ## 1. 현재 기술
 
@@ -58,6 +58,7 @@ lib/
 
 - `id`
 - `displayName`
+- `position`: `VOCAL | GUITAR | BASS | DRUMS | KEYBOARD`
 - `pinHash`
 - `role`: `MEMBER | ADMIN | OWNER`
 - `isActive`
@@ -155,7 +156,7 @@ lib/
 - `.openai/hosting.json`의 `d1`과 `r2`는 모두 `null`이다.
 - `db/schema.ts`는 비어 있다.
 - 데이터베이스 연결 코드는 준비되어 있지만 실제 데이터베이스는 아직 없다.
-- `tests/rendered-html.test.mjs`는 초기 템플릿 테스트이므로 BandPick 기능 테스트로 교체해야 한다.
+- `tests/rendered-html.test.mjs`는 BandPick 메인 화면의 핵심 콘텐츠가 서버에서 렌더링되는지 확인한다.
 
 ## 7. 기술 결정 기록
 
@@ -194,3 +195,8 @@ lib/
 
 - 이유: 수정된 곡에 기존 투표가 남는 오류를 막고 과거 결과를 신뢰할 수 있게 하기 위함이다.
 - 결과: 투표에서 등록 단계로 돌아가면 기존 투표를 모두 삭제하며, 마감된 월은 수정하거나 다시 열지 않는다.
+
+### ADR-008: 단일 주 포지션 프로필
+
+- 이유: 멤버 구성을 쉽게 확인하되 프로필 기능이 불필요하게 커지는 것을 막기 위함이다.
+- 결과: 멤버는 보컬, 기타, 베이스, 드럼, 키보드 중 하나만 주 포지션으로 저장하고 직접 변경할 수 있다.
