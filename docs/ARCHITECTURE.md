@@ -8,7 +8,7 @@
 - Tailwind CSS
 - vinext + Vite
 - Cloudflare Worker 배포 구조
-- Cloudflare D1 + Drizzle ORM 예정
+- Cloudflare D1 + Drizzle ORM
 
 ## 2. 역할 구분
 
@@ -58,6 +58,7 @@ lib/
 
 - `id`
 - `displayName`
+- `normalizedName`: 공백과 대소문자를 정규화한 중복 확인용 이름
 - `position`: `VOCAL | GUITAR | BASS | DRUMS | KEYBOARD`
 - `pinHash`
 - `role`: `MEMBER | ADMIN | OWNER`
@@ -87,17 +88,30 @@ lib/
 
 일반 PIN과 별개의 개별 관리자 암호를 저장한다. `ADMIN`과 `OWNER`만 가진다.
 
+### `authSessions`
+
+- `id`
+- `memberId`
+- `tokenHash`
+- `assurance`: `MEMBER | ADMIN`
+- `expiresAt`
+- `revokedAt`
+
+PIN 또는 관리자 암호 확인 후 발급하는 만료형 세션이다. 원문 세션 토큰은 저장하지 않는다.
+
 ### `monthlyRounds`
 
 - `id`
 - `year`
 - `month`
+- `revision`: 같은 달의 무효 처리 후 재투표 차수
 - `status`: `nominating | voting | closed`
 - `nominationDeadline`
 - `votingDeadline`
 - `heroTitle`
 - `heroDescription`
 - `selectedSongId`
+- `closedAt`
 - `invalidatedAt`
 - `invalidatedByMemberId`
 
@@ -156,10 +170,12 @@ lib/
 
 ## 6. 현재 설정 상태
 
-- `.openai/hosting.json`의 `d1`과 `r2`는 모두 `null`이다.
-- `db/schema.ts`는 비어 있다.
-- 데이터베이스 연결 코드는 준비되어 있지만 실제 데이터베이스는 아직 없다.
-- `tests/rendered-html.test.mjs`는 BandPick 메인 화면의 핵심 콘텐츠가 서버에서 렌더링되는지 확인한다.
+- `.openai/hosting.json`의 D1 논리 바인딩은 `DB`이며 R2는 사용하지 않는다.
+- `db/schema.ts`에 9개 테이블과 데이터베이스 제약 조건을 정의했다.
+- 첫 Drizzle 마이그레이션은 `drizzle/0000_dapper_cardiac.sql`이다.
+- 실제 원격 D1 데이터베이스 생성과 마이그레이션 적용은 아직 하지 않았다.
+- `monthlyRounds.selectedSongId`는 순환 외래키를 피하기 위해 스키마상 정수로 저장하고, 결과 확정 서비스에서 같은 투표방의 곡인지 검증한다.
+- `tests/rendered-html.test.mjs`는 피자집브레이크타임 메인 화면의 핵심 콘텐츠가 서버에서 렌더링되는지 확인한다.
 
 ## 7. 기술 결정 기록
 
@@ -203,3 +219,13 @@ lib/
 
 - 이유: 멤버 구성을 쉽게 확인하되 사진이나 소개글을 포함한 개인 프로필 기능은 필요하지 않기 때문이다.
 - 결과: 멤버는 보컬, 기타, 베이스, 드럼, 키보드 중 하나만 주 포지션으로 저장하며 관리자가 멤버 관리 화면에서 변경한다.
+
+### ADR-009: 멤버 이름 중복 금지
+
+- 이유: 로그인 계정 없이 이름과 PIN으로 본인을 확인하므로 같은 이름이 여러 명이면 대상을 안전하게 특정할 수 없다.
+- 결과: 표시 이름을 정규화한 `normalizedName`에 고유 인덱스를 두며 공백과 대소문자만 다른 이름도 중복으로 처리한다.
+
+### ADR-010: 같은 달 재투표 차수 저장
+
+- 이유: 마감된 월을 다시 열지 않고 무효 처리 후 새 투표방을 만들려면 같은 연도와 월을 여러 번 저장할 수 있어야 한다.
+- 결과: `year + month + revision`을 고유 키로 사용한다.
