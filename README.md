@@ -10,6 +10,7 @@ Node.js 22.13 이상이 필요합니다.
 
 ```bash
 npm install
+npm run db:setup:local
 npm run dev
 ```
 
@@ -23,7 +24,10 @@ npm run lint         # 코드 검사
 npm run build        # 배포용 빌드 확인
 npm run test         # 자동 테스트
 npm run db:generate  # DB 마이그레이션 생성
+npm run db:setup:local # 로컬 D1 마이그레이션 및 테스트 데이터 준비
 ```
+
+로컬 테스트 멤버의 공통 데모 PIN은 `021302`입니다. 데모 PIN은 로컬 테스트 데이터에만 사용하며 실제 배포 데이터에는 포함하지 않습니다.
 
 ## 기술 구성
 

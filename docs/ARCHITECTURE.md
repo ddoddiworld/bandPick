@@ -173,6 +173,8 @@ PIN 또는 관리자 암호 확인 후 발급하는 만료형 세션이다. 원�
 - `.openai/hosting.json`의 D1 논리 바인딩은 `DB`이며 R2는 사용하지 않는다.
 - `db/schema.ts`에 9개 테이블과 데이터베이스 제약 조건을 정의했다.
 - 첫 Drizzle 마이그레이션은 `drizzle/0000_dapper_cardiac.sql`이다.
+- `wrangler.local.jsonc`와 `npm run db:setup:local`로 로컬 D1 마이그레이션과 테스트 데이터를 준비한다.
+- `/api/state`는 현재 월의 멤버·곡·투표 집계를 조회하고 `/api/songs`는 PIN을 검증한 뒤 곡을 생성·수정·삭제한다.
 - 실제 원격 D1 데이터베이스 생성과 마이그레이션 적용은 아직 하지 않았다.
 - `monthlyRounds.selectedSongId`는 순환 외래키를 피하기 위해 스키마상 정수로 저장하고, 결과 확정 서비스에서 같은 투표방의 곡인지 검증한다.
 - `tests/rendered-html.test.mjs`는 피자집브레이크타임 메인 화면의 핵심 콘텐츠가 서버에서 렌더링되는지 확인한다.
