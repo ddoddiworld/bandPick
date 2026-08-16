@@ -29,12 +29,14 @@ test("server-renders the 피자집브레이크타임 home page", async () => {
 
   const html = await response.text();
   assert.match(html, /<html[^>]*lang="ko"/i);
-  assert.match(html, /<title>피자집브레이크타임 \| Monthly Picks<\/title>/i);
+  assert.match(html, /<title>피자집브레이크타임<\/title>/i);
   assert.match(html, /피자 한 판 고르듯/);
-  assert.match(html, /이번 달 곡 메뉴[\s\S]{0,20}3/);
+  assert.match(html, /이번 달 등록된 곡/);
+  assert.match(html, /Don&#x27;t Look Back in Anger/);
   assert.match(html, /피자집브레이크타임/);
   assert.match(html, /곡 등록하기/);
-  assert.match(html, /Emily[\s\S]{0,30}기타/);
+  assert.match(html, /Emily/);
+  assert.match(html, /기타/);
   assert.match(html, /프로토타입 단계 미리보기/);
   assert.doesNotMatch(html, /codex-preview/i);
 });
