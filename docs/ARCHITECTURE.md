@@ -1,4 +1,4 @@
-# 피자브레이크타임 Monthly Picks 기술 구조
+# 피자집브레이크타임 Monthly Picks 기술 구조
 
 ## 1. 현재 기술
 
@@ -95,6 +95,8 @@ lib/
 - `status`: `nominating | voting | closed`
 - `nominationDeadline`
 - `votingDeadline`
+- `heroTitle`
+- `heroDescription`
 - `selectedSongId`
 - `invalidatedAt`
 - `invalidatedByMemberId`
@@ -112,6 +114,7 @@ lib/
 - `roundId`
 - `artist`
 - `title`
+- `songType`: `MALE | FEMALE`
 - `url`
 - `note`
 - `createdByMemberId`

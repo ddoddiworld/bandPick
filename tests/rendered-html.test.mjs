@@ -22,17 +22,17 @@ async function render() {
   );
 }
 
-test("server-renders the Pizza Break Time home page", async () => {
+test("server-renders the 피자집브레이크타임 home page", async () => {
   const response = await render();
   assert.equal(response.status, 200);
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
 
   const html = await response.text();
   assert.match(html, /<html[^>]*lang="ko"/i);
-  assert.match(html, /<title>피자브레이크타임 \| Monthly Picks<\/title>/i);
+  assert.match(html, /<title>피자집브레이크타임 \| Monthly Picks<\/title>/i);
   assert.match(html, /피자 한 판 고르듯/);
   assert.match(html, /이번 달 곡 메뉴[\s\S]{0,20}3/);
-  assert.match(html, /PIZZA BREAK TIME/);
+  assert.match(html, /피자집브레이크타임/);
   assert.match(html, /곡 등록하기/);
   assert.match(html, /Emily[\s\S]{0,30}기타/);
   assert.match(html, /프로토타입 단계 미리보기/);

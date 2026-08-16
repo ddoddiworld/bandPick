@@ -13,11 +13,12 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "피자브레이크타임 | Monthly Picks",
-  description: "피자브레이크타임 멤버들이 매달 합주곡을 함께 고르는 공간",
+  title: "피자집브레이크타임",
+  description: "피자집브레이크타임 멤버들이 매달 합주곡을 함께 고르는 공간",
   icons: {
-    icon: "/favicon.svg",
-    shortcut: "/favicon.svg",
+    icon: [{ url: "/favicon.png", type: "image/png", sizes: "512x512" }],
+    shortcut: "/favicon.png",
+    apple: "/favicon.png",
   },
 };
 

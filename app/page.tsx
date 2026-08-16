@@ -4,12 +4,18 @@ import { FormEvent, useMemo, useState } from "react";
 
 type RoundStatus = "nominating" | "voting";
 type VoteValue = "like" | "dislike";
+type SongType = "남성곡" | "여성곡";
+type SongFilter = "전체" | SongType | "내가 올린 곡" | "인기순" | "전원 투표" | "전원 동의";
 const positions = ["보컬", "기타", "베이스", "드럼", "키보드"] as const;
 type Position = (typeof positions)[number];
+type MemberRole = "OWNER" | "ADMIN" | "MEMBER";
 
 type Member = {
   name: string;
   position: Position;
+  role: MemberRole;
+  isActive: boolean;
+  inviteStatus: "가입 완료" | "초대 대기";
 };
 
 type Song = {
@@ -19,17 +25,19 @@ type Song = {
   url: string;
   note: string;
   proposer: string;
+  songType: SongType;
   likes: number;
   dislikes: number;
 };
 
 const initialMembers: Member[] = [
-  { name: "Emily", position: "기타" },
-  { name: "Jin", position: "보컬" },
-  { name: "Mina", position: "키보드" },
-  { name: "Noah", position: "베이스" },
-  { name: "Sora", position: "드럼" },
-  { name: "Jun", position: "기타" },
+  { name: "Emily", position: "기타", role: "OWNER", isActive: true, inviteStatus: "가입 완료" },
+  { name: "Jin", position: "보컬", role: "ADMIN", isActive: true, inviteStatus: "가입 완료" },
+  { name: "Mina", position: "키보드", role: "MEMBER", isActive: true, inviteStatus: "가입 완료" },
+  { name: "Noah", position: "베이스", role: "MEMBER", isActive: true, inviteStatus: "가입 완료" },
+  { name: "Sora", position: "드럼", role: "MEMBER", isActive: true, inviteStatus: "가입 완료" },
+  { name: "Jun", position: "기타", role: "MEMBER", isActive: true, inviteStatus: "가입 완료" },
+  { name: "Hana", position: "보컬", role: "MEMBER", isActive: true, inviteStatus: "가입 완료" },
 ];
 
 const initialSongs: Song[] = [
@@ -40,6 +48,7 @@ const initialSongs: Song[] = [
     url: "https://www.youtube.com/results?search_query=Oasis+Don%27t+Look+Back+in+Anger",
     note: "다 같이 후렴을 부르면 공연 마지막 곡으로 좋을 것 같아요.",
     proposer: "Emily",
+    songType: "남성곡",
     likes: 4,
     dislikes: 0,
   },
@@ -50,6 +59,7 @@ const initialSongs: Song[] = [
     url: "https://www.youtube.com/results?search_query=Silica+Gel+NO+PAIN",
     note: "신스와 기타 톤을 맞춰보는 재미가 있을 것 같아요.",
     proposer: "Mina",
+    songType: "남성곡",
     likes: 5,
     dislikes: 0,
   },
@@ -60,6 +70,7 @@ const initialSongs: Song[] = [
     url: "https://www.youtube.com/results?search_query=DAY6+한+페이지가+될+수+있게",
     note: "각 파트가 고르게 돋보이고 합주 에너지가 좋아요.",
     proposer: "Jin",
+    songType: "여성곡",
     likes: 3,
     dislikes: 1,
   },
@@ -72,26 +83,75 @@ export default function Home() {
   const [votes, setVotes] = useState<Record<number, VoteValue>>({});
   const [formOpen, setFormOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [memberManagementOpen, setMemberManagementOpen] = useState(false);
+  const [memberEditorOpen, setMemberEditorOpen] = useState(false);
+  const [editingMember, setEditingMember] = useState<Member | null>(null);
+  const [heroSettingsOpen, setHeroSettingsOpen] = useState(false);
+  const [heroTitle, setHeroTitle] = useState("피자 한 판 고르듯,\n이번 달 합주곡을 골라요.");
+  const [heroDescription, setHeroDescription] = useState("피자집브레이크타임 멤버들이 한 조각씩 의견을 더해요. 전원이 좋아요를 누르면 이번 달 셋리스트 후보가 됩니다.");
+  const [songFilter, setSongFilter] = useState<SongFilter>("전체");
   const [editingSong, setEditingSong] = useState<Song | null>(null);
-  const [notice, setNotice] = useState("곡 등록 마감까지 5일 남았어요.");
+  const [notice, setNotice] = useState("");
+  const [alertMessage, setAlertMessage] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Song | null>(null);
   const currentUser = "Emily";
   const currentMember = members.find((member) => member.name === currentUser);
+  const activeMembers = members.filter((member) => member.isActive);
+
+  function getSongMetrics(song: Song) {
+    const myVote = votes[song.id];
+    const likeCount = song.likes + (myVote === "like" ? 1 : 0);
+    const dislikeCount = song.dislikes + (myVote === "dislike" ? 1 : 0);
+    return {
+      myVote,
+      likeCount,
+      dislikeCount,
+      everyoneVoted: likeCount + dislikeCount === activeMembers.length,
+      unanimous: likeCount === activeMembers.length && dislikeCount === 0,
+    };
+  }
+
+  const visibleSongs = songs
+    .filter((song) => {
+      if (songFilter === "전체" || songFilter === "인기순") return true;
+      if (songFilter === "내가 올린 곡") return song.proposer === currentUser;
+      if (songFilter === "전원 투표") return getSongMetrics(song).everyoneVoted;
+      if (songFilter === "전원 동의") return getSongMetrics(song).unanimous;
+      return song.songType === songFilter;
+    })
+    .sort((first, second) =>
+      songFilter === "인기순"
+        ? getSongMetrics(second).likeCount - getSongMetrics(first).likeCount
+        : 0,
+    );
+  const maleSongCount = songs.filter((song) => song.songType === "남성곡").length;
+  const femaleSongCount = songs.filter((song) => song.songType === "여성곡").length;
+  const mySongCount = songs.filter((song) => song.proposer === currentUser).length;
+  const everyoneVotedCount = songs.filter((song) => getSongMetrics(song).everyoneVoted).length;
+  const unanimousSongCount = songs.filter((song) => getSongMetrics(song).unanimous).length;
+  const highestLikeCount = Math.max(0, ...songs.map((song) => getSongMetrics(song).likeCount));
 
   const completedVoters = useMemo(
     () => (status === "voting" ? 4 : 0),
     [status],
   );
 
+  function showAlert(message: string) {
+    setNotice(message);
+    setAlertMessage(message);
+  }
+
   function changeStatus(nextStatus: RoundStatus) {
     setStatus(nextStatus);
+    setSongFilter("전체");
     setFormOpen(false);
     setEditingSong(null);
     if (nextStatus === "nominating") {
       setVotes({});
-      setNotice("등록 단계로 돌아왔어요. 데모 투표는 초기화됐습니다.");
+      showAlert("등록 단계로 돌아왔어요. 데모 투표는 초기화됐습니다.");
       return;
     }
-    setNotice("투표 단계 미리보기예요. 곡 등록과 수정은 잠겨 있어요.");
+    showAlert("투표 단계 미리보기예요. 곡 등록과 수정은 잠겨 있어요.");
   }
 
   function openCreateForm() {
@@ -116,10 +176,11 @@ export default function Home() {
     const title = String(formData.get("title") ?? "").trim();
     const url = String(formData.get("url") ?? "").trim();
     const note = String(formData.get("note") ?? "").trim();
+    const songType = String(formData.get("songType") ?? "남성곡") as SongType;
     const pin = String(formData.get("pin") ?? "").trim();
 
     if (!artist || !title || pin.length < 6) {
-      setNotice("아티스트와 곡 제목, 6자리 이상의 PIN을 확인해주세요.");
+      showAlert("아티스트와 곡 제목, 6자리 이상의 PIN을 확인해주세요.");
       return;
     }
 
@@ -127,11 +188,11 @@ export default function Home() {
       setSongs((current) =>
         current.map((song) =>
           song.id === editingSong.id
-            ? { ...song, artist, title, url, note }
+            ? { ...song, artist, title, url, note, songType }
             : song,
         ),
       );
-      setNotice(`${title} 정보를 수정했어요. PIN은 저장하지 않았습니다.`);
+      showAlert(`${title} 정보를 수정했어요. PIN은 저장하지 않았습니다.`);
     } else {
       setSongs((current) => [
         {
@@ -141,12 +202,13 @@ export default function Home() {
           url,
           note,
           proposer: currentUser,
+          songType,
           likes: 0,
           dislikes: 0,
         },
         ...current,
       ]);
-      setNotice(`${artist}의 ${title}을(를) 등록했어요.`);
+      showAlert(`${artist}의 ${title}을(를) 등록했어요.`);
     }
 
     event.currentTarget.reset();
@@ -154,17 +216,20 @@ export default function Home() {
   }
 
   function deleteSong(song: Song) {
-    const approved = window.confirm(
-      `${song.artist} - ${song.title}을(를) 삭제할까요?\n실제 서비스에서는 PIN을 다시 확인합니다.`,
-    );
-    if (!approved) return;
-    setSongs((current) => current.filter((item) => item.id !== song.id));
-    setNotice(`${song.title}을(를) 목록에서 삭제했어요.`);
+    setDeleteTarget(song);
+  }
+
+  function confirmDeleteSong() {
+    if (!deleteTarget) return;
+    const deletedTitle = deleteTarget.title;
+    setSongs((current) => current.filter((item) => item.id !== deleteTarget.id));
+    setDeleteTarget(null);
+    showAlert(`${deletedTitle}을(를) 목록에서 삭제했어요.`);
   }
 
   function vote(songId: number, value: VoteValue) {
     setVotes((current) => ({ ...current, [songId]: value }));
-    setNotice(value === "like" ? "좋아요를 선택했어요." : "싫어요를 선택했어요.");
+    showAlert(value === "like" ? "좋아요를 선택했어요." : "싫어요를 선택했어요.");
   }
 
   function submitProfile(event: FormEvent<HTMLFormElement>) {
@@ -179,7 +244,86 @@ export default function Home() {
       ),
     );
     setProfileOpen(false);
-    setNotice(`내 포지션을 ${position}(으)로 변경했어요.`);
+    showAlert(`내 포지션을 ${position}(으)로 변경했어요.`);
+  }
+
+  function submitHeroSettings(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const formData = new FormData(event.currentTarget);
+    const title = String(formData.get("heroTitle") ?? "").trim();
+    const description = String(formData.get("heroDescription") ?? "").trim();
+
+    if (!title) {
+      showAlert("메인 문구를 입력해주세요.");
+      return;
+    }
+
+    setHeroTitle(title);
+    setHeroDescription(description);
+    setHeroSettingsOpen(false);
+    showAlert("이번 달 메인 문구를 변경했어요.");
+  }
+
+  function openNewMemberForm() {
+    setEditingMember(null);
+    setMemberEditorOpen(true);
+  }
+
+  function openMemberEditForm(member: Member) {
+    setEditingMember(member);
+    setMemberEditorOpen(true);
+  }
+
+  function submitMember(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const formData = new FormData(event.currentTarget);
+    const name = String(formData.get("memberName") ?? "").trim();
+    const position = String(formData.get("memberPosition") ?? "") as Position;
+    const role = editingMember?.role === "OWNER"
+      ? "OWNER"
+      : String(formData.get("memberRole") ?? "MEMBER") as MemberRole;
+
+    if (!name || !positions.includes(position)) {
+      showAlert("멤버 이름과 포지션을 확인해주세요.");
+      return;
+    }
+
+    const duplicated = members.some(
+      (member) => member.name.toLowerCase() === name.toLowerCase() && member.name !== editingMember?.name,
+    );
+    if (duplicated) {
+      showAlert("이미 등록된 이름이에요.");
+      return;
+    }
+
+    if (editingMember) {
+      setMembers((current) => current.map((member) => member.name === editingMember.name ? { ...member, name, position, role } : member));
+      setSongs((current) => current.map((song) => song.proposer === editingMember.name ? { ...song, proposer: name } : song));
+      showAlert(`${name} 멤버 정보를 수정했어요.`);
+    } else {
+      setMembers((current) => [...current, { name, position, role, isActive: true, inviteStatus: "초대 대기" }]);
+      showAlert(`${name} 멤버를 등록하고 초대 대기 상태로 추가했어요.`);
+    }
+    setMemberEditorOpen(false);
+    setEditingMember(null);
+  }
+
+  function toggleMemberActive(member: Member) {
+    if (status !== "nominating") {
+      showAlert("투표 중에는 참여자 상태를 변경할 수 없어요.");
+      return;
+    }
+    if (member.role === "OWNER") {
+      showAlert("최고 관리자는 비활성화할 수 없어요.");
+      return;
+    }
+    setMembers((current) => current.map((item) => item.name === member.name ? { ...item, isActive: !item.isActive } : item));
+    showAlert(`${member.name} 멤버를 ${member.isActive ? "비활성" : "활성"} 상태로 변경했어요.`);
+  }
+
+  function issueInvite(member: Member) {
+    const mockCode = `${member.name.slice(0, 2).toUpperCase()}-${String(member.name.length * 731).padStart(4, "0")}`;
+    showAlert(`${member.name}님의 데모 초대 코드는 ${mockCode}입니다.`);
   }
 
   return (
@@ -191,17 +335,22 @@ export default function Home() {
               🍕
             </span>
             <span>
-              <strong className="block text-lg leading-none tracking-[-0.03em]">PIZZA BREAK TIME</strong>
-              <span className="mt-1 block text-[10px] font-bold tracking-[0.18em] text-[#c7442c]">MONTHLY SETLIST CLUB</span>
+              <strong className="block text-lg leading-none tracking-[-0.03em]">피자집브레이크타임</strong>
+              {/* <span className="mt-1 block text-[10px] font-bold tracking-[0.18em] text-[#c7442c]">MONTHLY SETLIST CLUB</span> */}
             </span>
           </a>
-          <button
-            type="button"
-            onClick={() => setProfileOpen(true)}
-            className="rounded-full border border-[#1d201b]/15 bg-white px-4 py-2 text-sm font-semibold shadow-sm transition hover:-translate-y-0.5"
-          >
-            {currentUser} · {currentMember?.position ?? "포지션 미정"}
-          </button>
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={() => setMemberManagementOpen(true)} className="rounded-full border-2 border-[#2d2118] bg-[#ffd85c] px-3 py-2 text-xs font-black shadow-[2px_2px_0_#2d2118] transition hover:-translate-y-0.5 sm:px-4 sm:text-sm">
+              ⚙ 멤버 관리
+            </button>
+            <button
+              type="button"
+              onClick={() => setProfileOpen(true)}
+              className="rounded-full border border-[#1d201b]/15 bg-white px-3 py-2 text-xs font-semibold shadow-sm transition hover:-translate-y-0.5 sm:px-4 sm:text-sm"
+            >
+              {currentUser} · {currentMember?.position ?? "포지션 미정"}
+            </button>
+          </div>
         </div>
       </header>
 
@@ -215,21 +364,19 @@ export default function Home() {
                   {status === "nominating" ? "곡 등록 중" : "투표 중"}
                 </span>
                 <span className="text-sm font-semibold text-white/75">2026년 8월 · SLICE OF THE MONTH</span>
+                <button type="button" onClick={() => setHeroSettingsOpen(true)} className="rounded-full border border-white/35 bg-white/10 px-3 py-1 text-xs font-bold text-white transition hover:bg-white/20">
+                  ✎ 관리자 문구 편집
+                </button>
               </div>
-              <h1 className="max-w-3xl text-4xl font-semibold tracking-[-0.04em] sm:text-6xl">
-                피자 한 판 고르듯,
-                <br />이번 달 합주곡을 골라요.
-              </h1>
-              <p className="mt-5 max-w-xl text-base leading-7 text-white/65">
-                피자브레이크타임 멤버들이 한 조각씩 의견을 더해요. 전원이 좋아요를 누르면 이번 달 셋리스트 후보가 됩니다.
-              </p>
+              <h1 className="max-w-3xl whitespace-pre-line text-4xl font-semibold tracking-[-0.04em] sm:text-6xl">{heroTitle}</h1>
+              {heroDescription && <p className="mt-5 max-w-xl whitespace-pre-line text-base leading-7 text-white/65">{heroDescription}</p>}
             </div>
             <div className="min-w-56 rotate-[1deg] rounded-3xl border-2 border-[#2d2118] bg-[#fff6df] p-5 text-[#2d2118] shadow-[5px_5px_0_#2d2118]">
               <p className="text-xs font-black uppercase tracking-[0.16em] text-[#c7442c]">
                 {status === "nominating" ? "등록 마감" : "투표 현황"}
               </p>
               <p className="mt-2 text-3xl font-semibold">
-                {status === "nominating" ? "D-5" : `${completedVoters}/${members.length}`}
+                {status === "nominating" ? "D-5" : `${completedVoters}/${activeMembers.length}`}
               </p>
               <p className="mt-1 text-sm text-[#6e5848]">
                 {status === "nominating" ? "8월 21일 오후 10시" : "2명이 아직 투표 전이에요"}
@@ -265,12 +412,13 @@ export default function Home() {
 
         <p className="sr-only" role="status" aria-live="polite">{notice}</p>
 
-        <div className="mt-10 grid gap-10 lg:grid-cols-[minmax(0,1fr)_280px]">
+        <div className="mt-10 grid gap-8 lg:grid-cols-[minmax(0,1fr)_260px]">
           <section aria-labelledby="songs-heading">
-            <div className="mb-5 flex items-end justify-between gap-4">
+            <div className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
               <div>
                 <p className="text-sm font-black tracking-[0.12em] text-[#c7442c]">ON THE MENU</p>
                 <h2 id="songs-heading" className="mt-1 text-3xl font-semibold tracking-tight">이번 달 곡 메뉴 {songs.length}</h2>
+                <p className="mt-2 text-sm text-[#6e5848]">7명이 2곡씩 올려도 빠르게 비교할 수 있게 모아봤어요.</p>
               </div>
               <button
                 type="button"
@@ -282,33 +430,71 @@ export default function Home() {
               </button>
             </div>
 
-            <div className="space-y-4">
-              {songs.map((song, index) => {
-                const myVote = votes[song.id];
+            <div className="sticky top-3 z-20 mb-5 rounded-2xl border-2 border-[#2d2118] bg-[#fff6df]/95 p-3 shadow-[3px_3px_0_#2d2118] backdrop-blur">
+              <div className="flex gap-2 overflow-x-auto pb-0.5" aria-label="곡 목록 필터">
+                {([
+                  "전체",
+                  "남성곡",
+                  "여성곡",
+                  "내가 올린 곡",
+                  ...(status === "voting" ? ["인기순", "전원 투표", "전원 동의"] : []),
+                ] as SongFilter[]).map((filter) => (
+                  <button
+                    key={filter}
+                    type="button"
+                    onClick={() => setSongFilter(filter)}
+                    aria-pressed={songFilter === filter}
+                    className={`shrink-0 rounded-full px-4 py-2 text-sm font-bold transition ${songFilter === filter ? "bg-[#2d2118] text-white" : "bg-white text-[#6e5848] hover:bg-[#ffe9a7]"}`}
+                  >
+                    {filter}
+                    {filter === "전체"
+                      ? ` ${songs.length}`
+                      : filter === "남성곡"
+                        ? ` ${maleSongCount}`
+                        : filter === "여성곡"
+                          ? ` ${femaleSongCount}`
+                          : filter === "내가 올린 곡"
+                            ? ` ${mySongCount}`
+                            : filter === "전원 투표"
+                              ? ` ${everyoneVotedCount}`
+                              : filter === "전원 동의"
+                                ? ` ${unanimousSongCount}`
+                                : ""}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="grid gap-4 xl:grid-cols-2">
+              {visibleSongs.map((song) => {
+                const { myVote, likeCount, dislikeCount, unanimous } = getSongMetrics(song);
                 const isMine = song.proposer === currentUser;
-                const likeCount = song.likes + (myVote === "like" ? 1 : 0);
-                const dislikeCount = song.dislikes + (myVote === "dislike" ? 1 : 0);
-                const unanimous = likeCount === members.length && dislikeCount === 0;
+                const isPopular = status === "voting" && highestLikeCount > 0 && likeCount === highestLikeCount;
 
                 return (
-                  <article key={song.id} className="group rounded-3xl border-2 border-[#2d2118] bg-[#fffdf7] p-5 shadow-[5px_5px_0_#2d2118] transition hover:-translate-y-1 sm:p-6">
-                    <div className="flex gap-4 sm:gap-6">
-                      <div className="grid h-14 w-14 shrink-0 rotate-[-3deg] place-items-center rounded-2xl border-2 border-[#2d2118] bg-[#ffd85c] text-xl font-black text-[#c7442c] sm:h-16 sm:w-16">
-                        {String(index + 1).padStart(2, "0")}
-                      </div>
-                      <div className="min-w-0 flex-1">
+                  <article key={song.id} className="group flex min-h-64 flex-col rounded-3xl border-2 border-[#2d2118] bg-[#fffdf7] p-4 shadow-[4px_4px_0_#2d2118] transition hover:-translate-y-1 sm:p-5">
+                    <div className="flex-1">
+                      <div className="min-w-0">
                         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                           <div>
-                            <p className="text-sm font-medium text-[#72776c]">{song.artist}</p>
-                            <h3 className="mt-1 text-xl font-semibold tracking-tight sm:text-2xl">{song.title}</h3>
+                            <div className="flex items-center gap-2 text-xs font-bold">
+                              <span className={`rounded-full px-2.5 py-1 ${song.songType === "남성곡" ? "bg-[#e4edf7] text-[#345477]" : "bg-[#f8e4e9] text-[#86485a]"}`}>{song.songType}</span>
+                              <span className="text-[#8b7767]">{song.proposer} PICK</span>
+                            </div>
+                            <p className="mt-3 text-sm font-medium text-[#72776c]">{song.artist}</p>
+                            <h3 className="mt-0.5 line-clamp-2 text-xl font-semibold tracking-tight">{song.title}</h3>
                           </div>
-                          {unanimous && (
-                            <span className="w-fit rounded-full border-2 border-[#2d2118] bg-[#ffd85c] px-3 py-1 text-xs font-black text-[#2d2118]">🍕 전원 동의</span>
-                          )}
+                          <div className="flex flex-wrap gap-2">
+                            {isPopular && (
+                              <span className="w-fit rounded-full border-2 border-[#2d2118] bg-[#c7442c] px-3 py-1 text-xs font-black text-white">🔥 인기곡</span>
+                            )}
+                            {unanimous && (
+                              <span className="w-fit rounded-full border-2 border-[#2d2118] bg-[#ffd85c] px-3 py-1 text-xs font-black text-[#2d2118]">🍕 전원 동의</span>
+                            )}
+                          </div>
                         </div>
-                        <p className="mt-3 text-sm leading-6 text-[#62675d]">{song.note}</p>
-                        <div className="mt-5 flex flex-wrap items-center gap-2 text-sm">
-                          <span className="rounded-full bg-[#f3f0e9] px-3 py-1.5 text-[#62675d]">제안 {song.proposer}</span>
+                        {song.note && <p className="mt-3 line-clamp-2 text-sm leading-6 text-[#62675d]">{song.note}</p>}
+                        <div className="mt-4 flex flex-wrap items-center gap-2 text-sm">
                           {song.url && (
                             <a href={song.url} target="_blank" rel="noreferrer" className="rounded-full border border-[#1d201b]/10 px-3 py-1.5 font-semibold hover:bg-[#f3f0e9]">
                               ▶ 들어보기
@@ -318,20 +504,36 @@ export default function Home() {
                       </div>
                     </div>
 
-                    <div className="mt-5 flex flex-col gap-3 border-t border-[#1d201b]/8 pt-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="mt-4 flex flex-col gap-3 border-t border-[#1d201b]/8 pt-4 sm:flex-row sm:items-center sm:justify-between">
                       {status === "nominating" ? (
                         <>
                           <p className="text-sm text-[#777c70]">투표가 시작되면 의견을 선택할 수 있어요.</p>
                           {isMine && (
                             <div className="flex gap-2">
-                              <button type="button" onClick={() => openEditForm(song)} className="rounded-full border border-[#1d201b]/12 px-4 py-2 text-sm font-semibold hover:bg-[#f3f0e9]">수정</button>
-                              <button type="button" onClick={() => deleteSong(song)} className="rounded-full border border-[#e65f3c]/30 px-4 py-2 text-sm font-semibold text-[#c9492b] hover:bg-[#fff1ed]">삭제</button>
+                              <button
+                                type="button"
+                                onClick={() => openEditForm(song)}
+                                aria-label={`${song.title} 수정`}
+                                title="수정"
+                                className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-[#1d201b]/12 text-base hover:bg-[#f3f0e9]"
+                              >
+                                <span aria-hidden="true">✎</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => deleteSong(song)}
+                                aria-label={`${song.title} 삭제`}
+                                title="삭제"
+                                className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-[#e65f3c]/30 text-sm text-[#c9492b] hover:bg-[#fff1ed]"
+                              >
+                                <span aria-hidden="true">🗑</span>
+                              </button>
                             </div>
                           )}
                         </>
                       ) : (
                         <>
-                          <p className="text-sm text-[#777c70]">현재 선택은 마감 전까지 바꿀 수 있어요.</p>
+                          <p className="text-sm text-[#777c70]">마감 전까지 바꿀 수 있어요.</p>
                           <div className="flex gap-2">
                             <button
                               type="button"
@@ -357,19 +559,24 @@ export default function Home() {
                 );
               })}
             </div>
+            {visibleSongs.length === 0 && (
+              <div className="rounded-3xl border-2 border-dashed border-[#9a8776] px-6 py-16 text-center text-sm text-[#6e5848]">이 조건에 맞는 곡이 아직 없어요.</div>
+            )}
           </section>
 
           <aside className="space-y-5" aria-label="이번 달 참여 현황">
             <section className="rounded-3xl border-2 border-[#2d2118] bg-[#ffe9a7] p-5 shadow-[5px_5px_0_#2d2118]">
               <div className="flex items-center justify-between">
                 <h2 className="text-lg font-semibold">멤버</h2>
-                <span className="text-sm font-semibold text-[#686d62]">{members.length}명</span>
+                <span className="text-sm font-semibold text-[#686d62]">{activeMembers.length}명</span>
               </div>
               <ul className="mt-5 space-y-3">
-                {members.map((member, index) => {
+                {activeMembers.map((member, index) => {
                   const voted = status === "voting" && index < completedVoters;
+                  const registeredSongCount = songs.filter((song) => song.proposer === member.name).length;
+                  const nominationComplete = registeredSongCount >= 2;
                   return (
-                    <li key={member.name} className="flex items-center justify-between rounded-2xl bg-white/70 px-3 py-2.5">
+                    <li key={member.name} className="flex items-center justify-between gap-2 rounded-2xl bg-white/70 px-3 py-2.5">
                       <span className="flex min-w-0 items-center gap-3">
                         <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#d9d3c7] text-xs font-bold">{member.name.slice(0, 1)}</span>
                         <span className="min-w-0">
@@ -377,13 +584,29 @@ export default function Home() {
                           <span className="mt-0.5 block text-xs text-[#7a7f74]">{member.position}</span>
                         </span>
                       </span>
-                      <span className={`text-xs font-bold ${voted ? "text-[#3f6b34]" : "text-[#979b91]"}`}>
-                        {status === "nominating" ? "참여" : voted ? "완료" : "미투표"}
+                      <span className="flex shrink-0 flex-col items-end gap-1">
+                        <span className="text-xs font-bold text-[#6e5848]">{registeredSongCount}/2곡</span>
+                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-black ${status === "nominating" ? nominationComplete ? "bg-[#dcebcf] text-[#3f6b34]" : "bg-[#f3e7c7] text-[#856b2e]" : voted ? "bg-[#dcebcf] text-[#3f6b34]" : "bg-[#eee9df] text-[#777166]"}`}>
+                          {status === "nominating" ? nominationComplete ? "등록 완료" : "등록 중" : voted ? "투표 완료" : "미투표"}
+                        </span>
                       </span>
                     </li>
                   );
                 })}
               </ul>
+            </section>
+
+            <section className="rounded-3xl border-2 border-[#2d2118] bg-white p-5 shadow-[5px_5px_0_#2d2118]">
+              <p className="text-xs font-black tracking-[0.15em] text-[#c7442c]">2 PICKS EACH</p>
+              <h2 className="mt-2 text-lg font-semibold">내 제출 현황</h2>
+              <div className="mt-4 flex items-end justify-between">
+                <strong className="text-4xl">{mySongCount}<span className="text-lg text-[#8b7767]"> / 2곡</span></strong>
+                <span className="text-3xl" aria-hidden="true">{mySongCount >= 2 ? "🍕" : "🍕"}</span>
+              </div>
+              <div className="mt-4 h-2 overflow-hidden rounded-full bg-[#eee5d5]">
+                <div className="h-full rounded-full bg-[#c7442c] transition-all" style={{ width: `${Math.min(100, (mySongCount / 2) * 100)}%` }} />
+              </div>
+              <p className="mt-3 text-sm text-[#6e5848]">{mySongCount >= 2 ? "이번 달 추천을 모두 채웠어요!" : `${2 - mySongCount}곡을 더 추천해주세요.`}</p>
             </section>
 
             <section className="rounded-3xl border-2 border-[#2d2118] bg-[#c7442c] p-5 text-white shadow-[5px_5px_0_#2d2118]">
@@ -394,6 +617,94 @@ export default function Home() {
           </aside>
         </div>
       </div>
+
+      {memberManagementOpen && (
+        <div className="fixed inset-0 z-50 grid place-items-end bg-[#12150f]/50 p-0 backdrop-blur-sm sm:place-items-center sm:p-6" role="presentation">
+          <section role="dialog" aria-modal="true" aria-labelledby="member-management-title" className="flex max-h-[92vh] w-full flex-col rounded-t-[2rem] border-[#2d2118] bg-[#fff6df] shadow-2xl sm:max-w-3xl sm:rounded-[2rem] sm:border-2">
+            <div className="flex items-start justify-between gap-4 border-b-2 border-[#2d2118] p-6 sm:p-8">
+              <div>
+                <p className="text-sm font-black tracking-[0.12em] text-[#c7442c]">ADMIN · MEMBERS</p>
+                <h2 id="member-management-title" className="mt-1 text-3xl font-semibold tracking-tight">멤버 관리</h2>
+                <p className="mt-2 text-sm text-[#6e5848]">등록 멤버 {members.length}명 · 이번 달 참여 {activeMembers.length}명</p>
+              </div>
+              <button type="button" onClick={() => setMemberManagementOpen(false)} aria-label="멤버 관리 창 닫기" className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#ece7dc] text-xl">×</button>
+            </div>
+
+            <div className="overflow-y-auto p-6 sm:p-8">
+              {status === "voting" && (
+                <div className="mb-5 rounded-2xl border border-[#c7442c]/30 bg-[#fff0e8] px-4 py-3 text-sm font-semibold text-[#8b3f2e]">🔒 투표 중에는 멤버 정보와 참여 상태를 변경할 수 없어요.</div>
+              )}
+              <div className="mb-5 flex items-center justify-between gap-4">
+                <div>
+                  <h3 className="text-lg font-semibold">등록된 멤버</h3>
+                  <p className="mt-1 text-xs text-[#7a6b5e]">초대 코드는 프로토타입용으로 화면에서만 생성됩니다.</p>
+                </div>
+                <button type="button" onClick={openNewMemberForm} disabled={status !== "nominating"} className="shrink-0 rounded-full border-2 border-[#2d2118] bg-[#c7442c] px-4 py-2.5 text-sm font-bold text-white shadow-[3px_3px_0_#2d2118] disabled:cursor-not-allowed disabled:bg-[#aaa39a] disabled:shadow-none">+ 멤버 등록</button>
+              </div>
+
+              <ul className="space-y-3">
+                {members.map((member) => (
+                  <li key={member.name} className={`rounded-2xl border-2 border-[#2d2118] p-4 ${member.isActive ? "bg-white" : "bg-[#e9e4da] opacity-70"}`}>
+                    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="flex min-w-0 items-center gap-3">
+                        <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-[#ffd85c] font-black">{member.name.slice(0, 1)}</span>
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <strong className="truncate">{member.name}</strong>
+                            <span className={`rounded-full px-2 py-0.5 text-[10px] font-black ${member.role === "OWNER" ? "bg-[#2d2118] text-white" : member.role === "ADMIN" ? "bg-[#ffd85c] text-[#2d2118]" : "bg-[#eee9df] text-[#74685e]"}`}>{member.role}</span>
+                            {!member.isActive && <span className="rounded-full bg-[#d9d3c7] px-2 py-0.5 text-[10px] font-black">비활성</span>}
+                          </div>
+                          <p className="mt-1 text-xs text-[#74685e]">{member.position} · {member.inviteStatus}</p>
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <button type="button" onClick={() => issueInvite(member)} className="rounded-full border border-[#2d2118]/20 bg-[#fff6df] px-3 py-2 text-xs font-bold">초대 코드</button>
+                        <button type="button" onClick={() => openMemberEditForm(member)} disabled={status !== "nominating"} className="rounded-full border border-[#2d2118]/20 bg-white px-3 py-2 text-xs font-bold disabled:cursor-not-allowed disabled:opacity-40">수정</button>
+                        <button type="button" onClick={() => toggleMemberActive(member)} disabled={status !== "nominating" || member.role === "OWNER"} className="rounded-full border border-[#c7442c]/25 bg-white px-3 py-2 text-xs font-bold text-[#a53e2c] disabled:cursor-not-allowed disabled:opacity-40">{member.isActive ? "비활성화" : "활성화"}</button>
+                      </div>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {memberEditorOpen && (
+        <div className="fixed inset-0 z-[60] grid place-items-end bg-[#12150f]/55 p-0 backdrop-blur-sm sm:place-items-center sm:p-6" role="presentation">
+          <section role="dialog" aria-modal="true" aria-labelledby="member-editor-title" className="w-full rounded-t-[2rem] border-[#2d2118] bg-[#fff6df] p-6 shadow-2xl sm:max-w-md sm:rounded-[2rem] sm:border-2 sm:p-8">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-sm font-black tracking-[0.12em] text-[#c7442c]">MEMBER PROFILE</p>
+                <h2 id="member-editor-title" className="mt-1 text-3xl font-semibold">{editingMember ? "멤버 정보 수정" : "새 멤버 등록"}</h2>
+              </div>
+              <button type="button" onClick={() => setMemberEditorOpen(false)} aria-label="멤버 등록 창 닫기" className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#ece7dc] text-xl">×</button>
+            </div>
+            <form key={editingMember?.name ?? "new-member"} onSubmit={submitMember} className="mt-7 space-y-5">
+              <label className="grid gap-2 text-sm font-semibold">이름 또는 별명
+                <input name="memberName" required maxLength={30} defaultValue={editingMember?.name} placeholder="예: Jisu" className="rounded-xl border border-[#1d201b]/15 bg-white px-4 py-3 font-normal outline-none focus:border-[#c7442c] focus:ring-2 focus:ring-[#c7442c]/15" />
+              </label>
+              <label className="grid gap-2 text-sm font-semibold">주 포지션
+                <select name="memberPosition" defaultValue={editingMember?.position ?? "보컬"} className="rounded-xl border border-[#1d201b]/15 bg-white px-4 py-3 font-normal outline-none focus:border-[#c7442c]">
+                  {positions.map((position) => <option key={position} value={position}>{position}</option>)}
+                </select>
+              </label>
+              <label className="grid gap-2 text-sm font-semibold">권한
+                <select name="memberRole" defaultValue={editingMember?.role ?? "MEMBER"} disabled={editingMember?.role === "OWNER"} className="rounded-xl border border-[#1d201b]/15 bg-white px-4 py-3 font-normal outline-none focus:border-[#c7442c] disabled:bg-[#e9e4da]">
+                  <option value="MEMBER">일반 멤버</option>
+                  <option value="ADMIN">부관리자</option>
+                  {editingMember?.role === "OWNER" && <option value="OWNER">최고 관리자</option>}
+                </select>
+              </label>
+              <div className="grid grid-cols-2 gap-3 pt-2">
+                <button type="button" onClick={() => setMemberEditorOpen(false)} className="rounded-full border-2 border-[#2d2118] bg-white px-5 py-3 font-bold">취소</button>
+                <button type="submit" className="rounded-full border-2 border-[#2d2118] bg-[#c7442c] px-5 py-3 font-bold text-white">{editingMember ? "저장하기" : "등록하기"}</button>
+              </div>
+            </form>
+          </section>
+        </div>
+      )}
 
       {profileOpen && (
         <div className="fixed inset-0 z-50 grid place-items-end bg-[#12150f]/50 p-0 backdrop-blur-sm sm:place-items-center sm:p-6" role="presentation">
@@ -458,6 +769,17 @@ export default function Home() {
                   <input name="title" required maxLength={120} defaultValue={editingSong?.title} placeholder="예: Wonderwall" className="rounded-xl border border-[#1d201b]/15 bg-white px-4 py-3 font-normal outline-none focus:border-[#e65f3c] focus:ring-2 focus:ring-[#e65f3c]/15" />
                 </label>
               </div>
+              <fieldset>
+                <legend className="text-sm font-semibold">곡 구분</legend>
+                <div className="mt-2 grid grid-cols-2 gap-2">
+                  {(["남성곡", "여성곡"] as SongType[]).map((type) => (
+                    <label key={type} className="cursor-pointer">
+                      <input type="radio" name="songType" value={type} defaultChecked={(editingSong?.songType ?? "남성곡") === type} className="peer sr-only" />
+                      <span className="block rounded-xl border border-[#1d201b]/15 bg-white px-4 py-3 text-center text-sm font-semibold peer-checked:border-[#c7442c] peer-checked:bg-[#ffe9a7]">{type}</span>
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
               <label className="grid gap-2 text-sm font-semibold">
                 YouTube 또는 음원 링크 <span className="font-normal text-[#7a7f74]">선택</span>
                 <input name="url" type="url" defaultValue={editingSong?.url} placeholder="https://" className="rounded-xl border border-[#1d201b]/15 bg-white px-4 py-3 font-normal outline-none focus:border-[#e65f3c] focus:ring-2 focus:ring-[#e65f3c]/15" />
@@ -476,6 +798,63 @@ export default function Home() {
                 <button type="submit" className="flex-1 rounded-full bg-[#20271f] px-5 py-3 font-bold text-white">{editingSong ? "수정하기" : "등록하기"}</button>
               </div>
             </form>
+          </section>
+        </div>
+      )}
+
+      {heroSettingsOpen && (
+        <div className="fixed inset-0 z-50 grid place-items-end bg-[#12150f]/50 p-0 backdrop-blur-sm sm:place-items-center sm:p-6" role="presentation">
+          <section role="dialog" aria-modal="true" aria-labelledby="hero-settings-title" className="w-full rounded-t-[2rem] border-[#2d2118] bg-[#fff6df] p-6 shadow-2xl sm:max-w-xl sm:rounded-[2rem] sm:border-2 sm:p-8">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-sm font-black tracking-[0.12em] text-[#c7442c]">ADMIN MESSAGE</p>
+                <h2 id="hero-settings-title" className="mt-1 text-3xl font-semibold tracking-tight">이번 달 문구 편집</h2>
+                <p className="mt-2 text-sm leading-6 text-[#6e5848]">현재 월의 메인 화면에 보여줄 안내를 작성해요.</p>
+              </div>
+              <button type="button" onClick={() => setHeroSettingsOpen(false)} aria-label="문구 편집 창 닫기" className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#ece7dc] text-xl">×</button>
+            </div>
+            <form onSubmit={submitHeroSettings} className="mt-7 space-y-5">
+              <label className="grid gap-2 text-sm font-semibold">
+                메인 문구
+                <textarea name="heroTitle" required rows={3} maxLength={80} defaultValue={heroTitle} className="resize-none rounded-xl border border-[#1d201b]/15 bg-white px-4 py-3 text-lg font-semibold outline-none focus:border-[#c7442c] focus:ring-2 focus:ring-[#c7442c]/15" />
+                <span className="text-xs font-normal text-[#7a7f74]">줄바꿈도 화면에 그대로 반영됩니다.</span>
+              </label>
+              <label className="grid gap-2 text-sm font-semibold">
+                설명 문구 <span className="font-normal text-[#7a7f74]">선택</span>
+                <textarea name="heroDescription" rows={3} maxLength={200} defaultValue={heroDescription} className="resize-none rounded-xl border border-[#1d201b]/15 bg-white px-4 py-3 font-normal outline-none focus:border-[#c7442c] focus:ring-2 focus:ring-[#c7442c]/15" />
+              </label>
+              <div className="grid grid-cols-2 gap-3 pt-2">
+                <button type="button" onClick={() => setHeroSettingsOpen(false)} className="rounded-full border-2 border-[#2d2118] bg-white px-5 py-3 font-bold">취소</button>
+                <button type="submit" className="rounded-full border-2 border-[#2d2118] bg-[#c7442c] px-5 py-3 font-bold text-white">문구 적용</button>
+              </div>
+            </form>
+          </section>
+        </div>
+      )}
+
+      {deleteTarget && (
+        <div className="fixed inset-0 z-[60] grid place-items-center bg-[#12150f]/55 p-5 backdrop-blur-sm" role="presentation">
+          <section role="alertdialog" aria-modal="true" aria-labelledby="delete-dialog-title" aria-describedby="delete-dialog-description" className="w-full max-w-sm rounded-[2rem] border-2 border-[#2d2118] bg-[#fff6df] p-6 text-center shadow-[7px_7px_0_#2d2118]">
+            <span className="mx-auto grid h-14 w-14 place-items-center rounded-full border-2 border-[#2d2118] bg-[#ffd85c] text-2xl" aria-hidden="true">🗑</span>
+            <h2 id="delete-dialog-title" className="mt-5 text-2xl font-semibold tracking-tight">이 곡을 삭제할까요?</h2>
+            <p id="delete-dialog-description" className="mt-3 break-keep text-sm leading-6 text-[#6e5848]">
+              <strong className="text-[#2d2118]">{deleteTarget.artist} · {deleteTarget.title}</strong><br />
+              실제 서비스에서는 개인 PIN을 다시 확인해요.
+            </p>
+            <div className="mt-6 grid grid-cols-2 gap-3">
+              <button type="button" onClick={() => setDeleteTarget(null)} className="rounded-full border-2 border-[#2d2118] bg-white px-4 py-3 font-bold">취소</button>
+              <button type="button" onClick={confirmDeleteSong} className="rounded-full border-2 border-[#2d2118] bg-[#c7442c] px-4 py-3 font-bold text-white">삭제하기</button>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {alertMessage && (
+        <div className="fixed inset-0 z-[70] grid place-items-center bg-[#12150f]/55 p-5 backdrop-blur-sm" role="presentation">
+          <section role="alertdialog" aria-modal="true" aria-labelledby="alert-dialog-title" className="w-full max-w-sm rounded-[2rem] border-2 border-[#2d2118] bg-[#fff6df] p-6 text-center shadow-[7px_7px_0_#2d2118]">
+            <span className="mx-auto grid h-14 w-14 rotate-[-4deg] place-items-center rounded-2xl border-2 border-[#2d2118] bg-[#ffd85c] text-2xl shadow-[3px_3px_0_#2d2118]" aria-hidden="true">🍕</span>
+            <h2 id="alert-dialog-title" className="mt-6 text-xl font-semibold leading-8 tracking-tight">{alertMessage}</h2>
+            <button type="button" autoFocus onClick={() => setAlertMessage(null)} className="mt-6 w-full rounded-full border-2 border-[#2d2118] bg-[#2d2118] px-5 py-3 font-bold text-white">확인</button>
           </section>
         </div>
       )}
