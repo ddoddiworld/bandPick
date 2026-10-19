@@ -32,6 +32,14 @@ npm run deploy       # 원격 D1 마이그레이션 → 빌드 → Cloudflare Wo
 
 로컬 테스트 멤버의 공통 데모 PIN은 `021302`입니다. 데모 PIN은 로컬 테스트 데이터에만 사용하며 실제 배포 데이터에는 포함하지 않습니다.
 
+## 배포 (GitHub Actions)
+
+`.github/workflows/ci.yml`
+
+- `develop`·`main` 대상 PR: `npm run lint`, `npm test` 실행
+- `main` 푸시 또는 Actions 탭 수동 실행: 검사 통과 후 `npm run deploy`로 Cloudflare Workers 배포
+- 필요한 저장소 Secrets: `CLOUDFLARE_API_TOKEN`(Workers Scripts·D1 편집 권한), `CLOUDFLARE_ACCOUNT_ID`
+
 ## 기술 구성
 
 - Next.js
