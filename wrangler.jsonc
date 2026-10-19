@@ -1,0 +1,14 @@
+{
+  "name": "bandpick",
+  "compatibility_date": "2026-05-15",
+  "main": "./worker/index.ts",
+  "compatibility_flags": ["nodejs_compat"],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "bandpick",
+      "database_id": "9819ec9c-29f4-4466-bd97-93534792d097",
+      "migrations_dir": "drizzle"
+    }
+  ]
+}

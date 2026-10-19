@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 
 type RoundStatus = "nominating" | "voting" | "closed";
 type VoteValue = "like" | "dislike";
@@ -11,6 +11,7 @@ type Position = (typeof positions)[number];
 type MemberRole = "OWNER" | "ADMIN" | "MEMBER";
 
 type Member = {
+  id: number;
   name: string;
   position: Position;
   role: MemberRole;
@@ -30,14 +31,31 @@ type Song = {
   dislikes: number;
 };
 
+type PersistedState = {
+  round: null | {
+    heroTitle: string;
+    heroDescription: string;
+  };
+  members: Member[];
+  songs: Song[];
+};
+
+const CURRENT_USER_KEY = "bandpick:current-user";
+
+async function fetchPersistedState(): Promise<PersistedState> {
+  const response = await fetch("/api/state", { cache: "no-store" });
+  if (!response.ok) throw new Error("저장된 데이터를 불러오지 못했어요.");
+  return response.json() as Promise<PersistedState>;
+}
+
 const initialMembers: Member[] = [
-  { name: "Emily", position: "기타", role: "OWNER", isActive: true, inviteStatus: "가입 완료" },
-  { name: "Jin", position: "보컬", role: "ADMIN", isActive: true, inviteStatus: "가입 완료" },
-  { name: "Mina", position: "키보드", role: "MEMBER", isActive: true, inviteStatus: "가입 완료" },
-  { name: "Noah", position: "베이스", role: "MEMBER", isActive: true, inviteStatus: "가입 완료" },
-  { name: "Sora", position: "드럼", role: "MEMBER", isActive: true, inviteStatus: "가입 완료" },
-  { name: "Jun", position: "기타", role: "MEMBER", isActive: true, inviteStatus: "가입 완료" },
-  { name: "Hana", position: "보컬", role: "MEMBER", isActive: true, inviteStatus: "가입 완료" },
+  { id: 1, name: "Emily", position: "기타", role: "OWNER", isActive: true, inviteStatus: "가입 완료" },
+  { id: 2, name: "Jin", position: "보컬", role: "ADMIN", isActive: true, inviteStatus: "가입 완료" },
+  { id: 3, name: "Mina", position: "키보드", role: "MEMBER", isActive: true, inviteStatus: "가입 완료" },
+  { id: 4, name: "Noah", position: "베이스", role: "MEMBER", isActive: true, inviteStatus: "가입 완료" },
+  { id: 5, name: "Sora", position: "드럼", role: "MEMBER", isActive: true, inviteStatus: "가입 완료" },
+  { id: 6, name: "Jun", position: "기타", role: "MEMBER", isActive: true, inviteStatus: "가입 완료" },
+  { id: 7, name: "Hana", position: "보컬", role: "MEMBER", isActive: true, inviteStatus: "가입 완료" },
 ];
 
 const initialSongs: Song[] = [
@@ -93,8 +111,55 @@ export default function Home() {
   const [notice, setNotice] = useState("");
   const [alertMessage, setAlertMessage] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Song | null>(null);
-  const currentUser = "Emily";
+  // Display-only identity; the server re-checks name + PIN on every change.
+  const [currentUser, setCurrentUser] = useState("");
   const activeMembers = members.filter((member) => member.isActive);
+
+  function changeCurrentUser(name: string) {
+    setCurrentUser(name);
+    try {
+      localStorage.setItem(CURRENT_USER_KEY, name);
+    } catch {
+      // Storage can be unavailable (private mode); selection still works for this visit.
+    }
+  }
+
+  function applyPersistedState(state: PersistedState) {
+    if (!state.round) return;
+    setMembers(state.members);
+    setSongs(state.songs);
+    setHeroTitle(state.round.heroTitle);
+    setHeroDescription(state.round.heroDescription);
+  }
+
+  async function refreshPersistedState() {
+    try {
+      applyPersistedState(await fetchPersistedState());
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "저장된 데이터를 불러오지 못했어요.");
+    }
+  }
+
+  useEffect(() => {
+    void fetchPersistedState()
+      .then((state) => {
+        if (!state.round) return;
+        setMembers(state.members);
+        setSongs(state.songs);
+        setHeroTitle(state.round.heroTitle);
+        setHeroDescription(state.round.heroDescription);
+      })
+      .catch(() => setNotice("저장된 데이터를 불러오지 못했어요."))
+      .finally(() => {
+        try {
+          const savedUser = localStorage.getItem(CURRENT_USER_KEY) ?? "";
+          // Keep a choice made while the data was still loading.
+          setCurrentUser((current) => current || savedUser);
+        } catch {
+          // Ignore unavailable storage.
+        }
+      });
+  }, []);
 
   function getSongMetrics(song: Song) {
     const myVote = votes[song.id];
@@ -163,6 +228,10 @@ export default function Home() {
   }
 
   function openCreateForm() {
+    if (!currentUser) {
+      showAlert("먼저 상단의 '나는 누구?'에서 본인 이름을 선택해주세요.");
+      return;
+    }
     setEditingSong(null);
     setFormOpen(true);
   }
@@ -177,9 +246,10 @@ export default function Home() {
     setEditingSong(null);
   }
 
-  function submitSong(event: FormEvent<HTMLFormElement>) {
+  async function submitSong(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const formData = new FormData(event.currentTarget);
+    const form = event.currentTarget;
+    const formData = new FormData(form);
     const artist = String(formData.get("artist") ?? "").trim();
     const title = String(formData.get("title") ?? "").trim();
     const url = String(formData.get("url") ?? "").trim();
@@ -192,47 +262,57 @@ export default function Home() {
       return;
     }
 
-    if (editingSong) {
-      setSongs((current) =>
-        current.map((song) =>
-          song.id === editingSong.id
-            ? { ...song, artist, title, url, note, songType }
-            : song,
-        ),
-      );
-      showAlert(`${title} 정보를 수정했어요. PIN은 저장하지 않았습니다.`);
-    } else {
-      setSongs((current) => [
-        {
-          id: Date.now(),
+    try {
+      const response = await fetch("/api/songs", {
+        method: editingSong ? "PATCH" : "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          id: editingSong?.id,
           artist,
           title,
           url,
           note,
-          proposer: currentUser,
           songType,
-          likes: 0,
-          dislikes: 0,
-        },
-        ...current,
-      ]);
-      showAlert(`${artist}의 ${title}을(를) 등록했어요.`);
-    }
+          proposer: currentUser,
+          pin,
+        }),
+      });
+      const result = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(result.error ?? "곡 정보를 저장하지 못했어요.");
 
-    event.currentTarget.reset();
-    closeForm();
+      await refreshPersistedState();
+      form.reset();
+      closeForm();
+      showAlert(editingSong ? `${title} 정보를 수정했어요.` : `${artist}의 ${title}을(를) 등록했어요.`);
+    } catch (error) {
+      showAlert(error instanceof Error ? error.message : "곡 정보를 저장하지 못했어요.");
+    }
   }
 
   function deleteSong(song: Song) {
     setDeleteTarget(song);
   }
 
-  function confirmDeleteSong() {
+  async function confirmDeleteSong(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
     if (!deleteTarget) return;
-    const deletedTitle = deleteTarget.title;
-    setSongs((current) => current.filter((item) => item.id !== deleteTarget.id));
-    setDeleteTarget(null);
-    showAlert(`${deletedTitle}을(를) 목록에서 삭제했어요.`);
+    const pin = String(new FormData(event.currentTarget).get("deletePin") ?? "");
+    try {
+      const response = await fetch("/api/songs", {
+        method: "DELETE",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id: deleteTarget.id, proposer: currentUser, pin }),
+      });
+      const result = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(result.error ?? "곡을 삭제하지 못했어요.");
+
+      const deletedTitle = deleteTarget.title;
+      setDeleteTarget(null);
+      await refreshPersistedState();
+      showAlert(`${deletedTitle}을(를) 목록에서 삭제했어요.`);
+    } catch (error) {
+      showAlert(error instanceof Error ? error.message : "곡을 삭제하지 못했어요.");
+    }
   }
 
   function vote(songId: number, value: VoteValue) {
@@ -294,7 +374,7 @@ export default function Home() {
       setSongs((current) => current.map((song) => song.proposer === editingMember.name ? { ...song, proposer: name } : song));
       showAlert(`${name} 멤버 정보를 수정했어요.`);
     } else {
-      setMembers((current) => [...current, { name, position, role, isActive: true, inviteStatus: "초대 대기" }]);
+      setMembers((current) => [...current, { id: Date.now(), name, position, role, isActive: true, inviteStatus: "초대 대기" }]);
       showAlert(`${name} 멤버를 등록하고 초대 대기 상태로 추가했어요.`);
     }
     setMemberEditorOpen(false);
@@ -332,9 +412,23 @@ export default function Home() {
               {/* <span className="mt-1 block text-[10px] font-bold tracking-[0.18em] text-[#c7442c]">MONTHLY SETLIST CLUB</span> */}
             </span>
           </a>
-          <button type="button" onClick={() => setMemberManagementOpen(true)} className="rounded-full border-2 border-[#2d2118] bg-[#ffd85c] px-3 py-2 text-xs font-black shadow-[2px_2px_0_#2d2118] transition hover:-translate-y-0.5 sm:px-4 sm:text-sm">
-            ⚙ 멤버 관리
-          </button>
+          <div className="flex items-center gap-2">
+            <label className="sr-only" htmlFor="current-user">본인 이름 선택</label>
+            <select
+              id="current-user"
+              value={currentUser}
+              onChange={(event) => changeCurrentUser(event.target.value)}
+              className="max-w-28 rounded-full border-2 border-[#2d2118] bg-white px-3 py-2 text-xs font-black shadow-[2px_2px_0_#2d2118] sm:max-w-none sm:text-sm"
+            >
+              <option value="">🙋 나는 누구?</option>
+              {activeMembers.map((member) => (
+                <option key={member.id} value={member.name}>{member.name}</option>
+              ))}
+            </select>
+            <button type="button" onClick={() => setMemberManagementOpen(true)} className="rounded-full border-2 border-[#2d2118] bg-[#ffd85c] px-3 py-2 text-xs font-black shadow-[2px_2px_0_#2d2118] transition hover:-translate-y-0.5 sm:px-4 sm:text-sm">
+              ⚙ 멤버 관리
+            </button>
+          </div>
         </div>
       </header>
 
@@ -802,9 +896,9 @@ export default function Home() {
                 <textarea name="note" rows={3} maxLength={240} defaultValue={editingSong?.note} placeholder="이 곡을 함께 연주하고 싶은 이유를 적어주세요." className="resize-none rounded-xl border border-[#1d201b]/15 bg-white px-4 py-3 font-normal outline-none focus:border-[#e65f3c] focus:ring-2 focus:ring-[#e65f3c]/15" />
               </label>
               <label className="grid gap-2 text-sm font-semibold">
-                개인 PIN
+                {currentUser}님의 개인 PIN
                 <input name="pin" type="password" inputMode="numeric" minLength={6} required autoComplete="off" placeholder="6자리 이상" className="rounded-xl border border-[#1d201b]/15 bg-white px-4 py-3 font-normal outline-none focus:border-[#e65f3c] focus:ring-2 focus:ring-[#e65f3c]/15" />
-                <span className="text-xs font-normal leading-5 text-[#7a7f74]">프로토타입에서는 PIN을 저장하거나 검증하지 않습니다.</span>
+                <span className="text-xs font-normal leading-5 text-[#7a7f74]">본인 확인에만 사용하며 PIN은 저장하지 않아요.</span>
               </label>
               <div className="flex gap-3 pt-2">
                 <button type="button" onClick={closeForm} className="flex-1 rounded-full border border-[#1d201b]/15 px-5 py-3 font-bold">취소</button>
@@ -852,12 +946,16 @@ export default function Home() {
             <h2 id="delete-dialog-title" className="mt-5 text-2xl font-semibold tracking-tight">이 곡을 삭제할까요?</h2>
             <p id="delete-dialog-description" className="mt-3 break-keep text-sm leading-6 text-[#6e5848]">
               <strong className="text-[#2d2118]">{deleteTarget.artist} · {deleteTarget.title}</strong><br />
-              실제 서비스에서는 개인 PIN을 다시 확인해요.
+              본인 확인을 위해 개인 PIN을 입력해주세요.
             </p>
-            <div className="mt-6 grid grid-cols-2 gap-3">
-              <button type="button" onClick={() => setDeleteTarget(null)} className="rounded-full border-2 border-[#2d2118] bg-white px-4 py-3 font-bold">취소</button>
-              <button type="button" onClick={confirmDeleteSong} className="rounded-full border-2 border-[#2d2118] bg-[#c7442c] px-4 py-3 font-bold text-white">삭제하기</button>
-            </div>
+            <form onSubmit={confirmDeleteSong} className="mt-5">
+              <label className="sr-only" htmlFor="delete-pin">개인 PIN</label>
+              <input id="delete-pin" name="deletePin" type="password" inputMode="numeric" minLength={6} required autoComplete="off" placeholder="개인 PIN 6자리 이상" className="w-full rounded-xl border border-[#1d201b]/15 bg-white px-4 py-3 text-center outline-none focus:border-[#c7442c] focus:ring-2 focus:ring-[#c7442c]/15" />
+              <div className="mt-4 grid grid-cols-2 gap-3">
+                <button type="button" onClick={() => setDeleteTarget(null)} className="rounded-full border-2 border-[#2d2118] bg-white px-4 py-3 font-bold">취소</button>
+                <button type="submit" className="rounded-full border-2 border-[#2d2118] bg-[#c7442c] px-4 py-3 font-bold text-white">삭제하기</button>
+              </div>
+            </form>
           </section>
         </div>
       )}

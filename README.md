@@ -10,6 +10,7 @@ Node.js 22.13 이상이 필요합니다.
 
 ```bash
 npm install
+npm run db:setup:local
 npm run dev
 ```
 
@@ -21,9 +22,25 @@ npm run dev
 npm run dev          # 개발 서버 실행
 npm run lint         # 코드 검사
 npm run build        # 배포용 빌드 확인
-npm run test         # 자동 테스트
+npm run typecheck    # 타입 검사
+npm run test         # 타입 검사 + 빌드 + 자동 테스트
+npm run test:e2e     # Playwright E2E (로컬 D1 시드 후 :3100 dev 서버로 PC·모바일 화면 테스트)
+npm run cf-typegen   # wrangler 설정 변경 후 Cloudflare 타입(worker-configuration.d.ts) 재생성
 npm run db:generate  # DB 마이그레이션 생성
+npm run db:setup:local # 로컬 D1 마이그레이션 및 테스트 데이터 준비
+npm run deploy       # 원격 D1 마이그레이션 → 빌드 → Cloudflare Workers 배포 (wrangler login 필요)
 ```
+
+로컬 테스트 멤버의 공통 데모 PIN은 `021302`입니다. 데모 PIN은 로컬 테스트 데이터에만 사용하며 실제 배포 데이터에는 포함하지 않습니다.
+
+## 배포 (GitHub Actions)
+
+`.github/workflows/ci.yml`
+
+- `develop`·`main` 대상 PR: `npm run lint`, `npm test`, `npm run test:e2e`(Playwright) 실행. e2e 실패 시 리포트를 Actions 아티팩트로 업로드
+- `main` 푸시 또는 Actions 탭 수동 실행: 검사 통과 후 `npm run deploy`로 Cloudflare Workers 배포
+- `main` 배포가 성공하면 `v<날짜>-<실행번호>` 태그(예: `v2026.10.19-12`)와 GitHub Release(변경 PR 목록 자동 작성)를 만든다
+- 필요한 저장소 Secrets: `CLOUDFLARE_API_TOKEN`(Workers Scripts·D1 편집 권한), `CLOUDFLARE_ACCOUNT_ID`
 
 ## 기술 구성
 
