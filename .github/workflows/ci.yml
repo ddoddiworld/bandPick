@@ -25,6 +25,8 @@ jobs:
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     environment: production
+    permissions:
+      contents: write
     concurrency:
       group: deploy-production
       cancel-in-progress: false
@@ -40,3 +42,11 @@ jobs:
       - run: npm ci
       # Applies remote D1 migrations, builds, then runs wrangler deploy.
       - run: npm run deploy
+      # Tag every production deploy from main, e.g. v2026.10.19-12, with auto-generated release notes.
+      - name: Tag release
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="v$(TZ=Asia/Seoul date +%Y.%m.%d)-${{ github.run_number }}"
+          gh release create "$TAG" --target "$GITHUB_SHA" --title "$TAG" --generate-notes
