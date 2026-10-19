@@ -35,10 +35,8 @@ npm run deploy       # 원격 D1 마이그레이션 → 빌드 → Cloudflare Wo
 
 ## 배포 (GitHub Actions)
 
-`.github/workflows/ci.yml`
-
-- `develop`·`main` 대상 PR: `npm run lint`, `npm test`, `npm run test:e2e`(Playwright) 실행. e2e 실패 시 리포트를 Actions 아티팩트로 업로드
-- `main` 푸시 또는 Actions 탭 수동 실행: 검사 통과 후 `npm run deploy`로 Cloudflare Workers 배포
+- **PR Check** (`.github/workflows/pr-check.yml`): `develop`·`main` 대상 PR마다 `npm run lint`, `npm test`, `npm run test:e2e`(Playwright) 실행. e2e 실패 시 리포트를 Actions 아티팩트로 업로드
+- **Deploy** (`.github/workflows/deploy.yml`): `main` 푸시 또는 Actions 탭 수동 실행 시 PR Check와 같은 검사를 거친 뒤 `npm run deploy`로 Cloudflare Workers 배포. Actions 왼쪽 메뉴에서 **Deploy**를 고르면 배포 기록만 볼 수 있다
 - `main` 배포가 성공하면 `v<날짜>-<실행번호>` 태그(예: `v2026.10.19-12`)와 GitHub Release(변경 PR 목록 자동 작성)를 만든다
 - 필요한 저장소 Secrets: `CLOUDFLARE_API_TOKEN`(Workers Scripts·D1 편집 권한), `CLOUDFLARE_ACCOUNT_ID`
 
