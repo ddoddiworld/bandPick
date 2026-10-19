@@ -40,6 +40,8 @@ type PersistedState = {
   songs: Song[];
 };
 
+const CURRENT_USER_KEY = "bandpick:current-user";
+
 async function fetchPersistedState(): Promise<PersistedState> {
   const response = await fetch("/api/state", { cache: "no-store" });
   if (!response.ok) throw new Error("저장된 데이터를 불러오지 못했어요.");
@@ -109,8 +111,18 @@ export default function Home() {
   const [notice, setNotice] = useState("");
   const [alertMessage, setAlertMessage] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Song | null>(null);
-  const currentUser = "Emily";
+  // Display-only identity; the server re-checks name + PIN on every change.
+  const [currentUser, setCurrentUser] = useState("");
   const activeMembers = members.filter((member) => member.isActive);
+
+  function changeCurrentUser(name: string) {
+    setCurrentUser(name);
+    try {
+      localStorage.setItem(CURRENT_USER_KEY, name);
+    } catch {
+      // Storage can be unavailable (private mode); selection still works for this visit.
+    }
+  }
 
   function applyPersistedState(state: PersistedState) {
     if (!state.round) return;
@@ -137,7 +149,14 @@ export default function Home() {
         setHeroTitle(state.round.heroTitle);
         setHeroDescription(state.round.heroDescription);
       })
-      .catch(() => setNotice("저장된 데이터를 불러오지 못했어요."));
+      .catch(() => setNotice("저장된 데이터를 불러오지 못했어요."))
+      .finally(() => {
+        try {
+          setCurrentUser(localStorage.getItem(CURRENT_USER_KEY) ?? "");
+        } catch {
+          // Ignore unavailable storage.
+        }
+      });
   }, []);
 
   function getSongMetrics(song: Song) {
@@ -207,6 +226,10 @@ export default function Home() {
   }
 
   function openCreateForm() {
+    if (!currentUser) {
+      showAlert("먼저 상단의 '나는 누구?'에서 본인 이름을 선택해주세요.");
+      return;
+    }
     setEditingSong(null);
     setFormOpen(true);
   }
@@ -387,9 +410,23 @@ export default function Home() {
               {/* <span className="mt-1 block text-[10px] font-bold tracking-[0.18em] text-[#c7442c]">MONTHLY SETLIST CLUB</span> */}
             </span>
           </a>
-          <button type="button" onClick={() => setMemberManagementOpen(true)} className="rounded-full border-2 border-[#2d2118] bg-[#ffd85c] px-3 py-2 text-xs font-black shadow-[2px_2px_0_#2d2118] transition hover:-translate-y-0.5 sm:px-4 sm:text-sm">
-            ⚙ 멤버 관리
-          </button>
+          <div className="flex items-center gap-2">
+            <label className="sr-only" htmlFor="current-user">본인 이름 선택</label>
+            <select
+              id="current-user"
+              value={currentUser}
+              onChange={(event) => changeCurrentUser(event.target.value)}
+              className="max-w-28 rounded-full border-2 border-[#2d2118] bg-white px-3 py-2 text-xs font-black shadow-[2px_2px_0_#2d2118] sm:max-w-none sm:text-sm"
+            >
+              <option value="">🙋 나는 누구?</option>
+              {activeMembers.map((member) => (
+                <option key={member.id} value={member.name}>{member.name}</option>
+              ))}
+            </select>
+            <button type="button" onClick={() => setMemberManagementOpen(true)} className="rounded-full border-2 border-[#2d2118] bg-[#ffd85c] px-3 py-2 text-xs font-black shadow-[2px_2px_0_#2d2118] transition hover:-translate-y-0.5 sm:px-4 sm:text-sm">
+              ⚙ 멤버 관리
+            </button>
+          </div>
         </div>
       </header>
 
@@ -857,9 +894,9 @@ export default function Home() {
                 <textarea name="note" rows={3} maxLength={240} defaultValue={editingSong?.note} placeholder="이 곡을 함께 연주하고 싶은 이유를 적어주세요." className="resize-none rounded-xl border border-[#1d201b]/15 bg-white px-4 py-3 font-normal outline-none focus:border-[#e65f3c] focus:ring-2 focus:ring-[#e65f3c]/15" />
               </label>
               <label className="grid gap-2 text-sm font-semibold">
-                개인 PIN
+                {currentUser}님의 개인 PIN
                 <input name="pin" type="password" inputMode="numeric" minLength={6} required autoComplete="off" placeholder="6자리 이상" className="rounded-xl border border-[#1d201b]/15 bg-white px-4 py-3 font-normal outline-none focus:border-[#e65f3c] focus:ring-2 focus:ring-[#e65f3c]/15" />
-                <span className="text-xs font-normal leading-5 text-[#7a7f74]">프로토타입에서는 PIN을 저장하거나 검증하지 않습니다.</span>
+                <span className="text-xs font-normal leading-5 text-[#7a7f74]">본인 확인에만 사용하며 PIN은 저장하지 않아요.</span>
               </label>
               <div className="flex gap-3 pt-2">
                 <button type="button" onClick={closeForm} className="flex-1 rounded-full border border-[#1d201b]/15 px-5 py-3 font-bold">취소</button>
