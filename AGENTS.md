@@ -56,6 +56,13 @@
 - 기능을 구현한 뒤 최소한 `npm run lint`와 `npm run build`를 실행한다.
 - 사용자 동작이나 규칙이 추가되면 해당 테스트도 추가하거나 갱신한다.
 
+## Git 작업 흐름
+
+- 모든 작업은 최신 `develop`에서 작업 주제를 나타내는 새 브랜치를 만들어 진행한다. 예: `feat/song-voting-api`, `fix/current-user-selection`, `chore/typecheck-cleanup`
+- 작업 후 해당 브랜치에 커밋하고 원격에 푸시한 뒤 `develop` 대상 PR을 생성한다.
+- `develop`과 `main`에 직접 커밋하거나 푸시하지 않는다. PR 머지는 저장소 소유자가 코드 확인 후 직접 한다.
+- 커밋 작성자는 저장소 소유자의 개인 계정을 사용한다.
+
 ## 수정하지 말아야 하는 영역
 
 다음은 자동 생성되므로 직접 편집하지 않는다.
