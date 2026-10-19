@@ -1,15 +1,8 @@
 import { asc, eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { members, roundMembers, songs, votes } from "@/db/schema";
+import { positionLabels } from "@/lib/members";
 import { getCurrentRound } from "@/lib/services/current-round";
-
-const positionLabels = {
-  VOCAL: "보컬",
-  GUITAR: "기타",
-  BASS: "베이스",
-  DRUMS: "드럼",
-  KEYBOARD: "키보드",
-} as const;
 
 export async function GET() {
   const db = await getDb();
