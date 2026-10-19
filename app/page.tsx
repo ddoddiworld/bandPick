@@ -41,6 +41,7 @@ type PersistedState = {
 };
 
 const CURRENT_USER_KEY = "bandpick:current-user";
+const SIGNUP_OPTION = "__signup__";
 
 async function fetchPersistedState(): Promise<PersistedState> {
   const response = await fetch("/api/state", { cache: "no-store" });
@@ -113,6 +114,7 @@ export default function Home() {
   const [deleteTarget, setDeleteTarget] = useState<Song | null>(null);
   // Display-only identity; the server re-checks name + PIN on every change.
   const [currentUser, setCurrentUser] = useState("");
+  const [signupOpen, setSignupOpen] = useState(false);
   const activeMembers = members.filter((member) => member.isActive);
 
   function changeCurrentUser(name: string) {
@@ -125,9 +127,10 @@ export default function Home() {
   }
 
   function applyPersistedState(state: PersistedState) {
-    if (!state.round) return;
+    // An empty database means nobody has signed up yet: show an empty band, not demo data.
     setMembers(state.members);
     setSongs(state.songs);
+    if (!state.round) return;
     setHeroTitle(state.round.heroTitle);
     setHeroDescription(state.round.heroDescription);
   }
@@ -142,13 +145,7 @@ export default function Home() {
 
   useEffect(() => {
     void fetchPersistedState()
-      .then((state) => {
-        if (!state.round) return;
-        setMembers(state.members);
-        setSongs(state.songs);
-        setHeroTitle(state.round.heroTitle);
-        setHeroDescription(state.round.heroDescription);
-      })
+      .then(applyPersistedState)
       .catch(() => setNotice("저장된 데이터를 불러오지 못했어요."))
       .finally(() => {
         try {
@@ -227,9 +224,43 @@ export default function Home() {
     showAlert("투표 단계 미리보기예요. 곡 등록과 수정은 잠겨 있어요.");
   }
 
+  async function submitSignup(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const formData = new FormData(event.currentTarget);
+    const pin = String(formData.get("signupPin") ?? "");
+    if (pin !== String(formData.get("signupPinConfirm") ?? "")) {
+      showAlert("PIN 확인이 일치하지 않아요.");
+      return;
+    }
+
+    try {
+      const response = await fetch("/api/members", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          name: String(formData.get("signupName") ?? ""),
+          position: String(formData.get("signupPosition") ?? ""),
+          pin,
+          joinCode: String(formData.get("signupJoinCode") ?? ""),
+        }),
+      });
+      const result = await response.json() as { error?: string; name?: string; role?: MemberRole };
+      if (!response.ok || !result.name) throw new Error(result.error ?? "가입하지 못했어요.");
+
+      await refreshPersistedState();
+      changeCurrentUser(result.name);
+      setSignupOpen(false);
+      showAlert(result.role === "OWNER"
+        ? `${result.name}님, 첫 멤버로 가입해 최고 관리자가 되었어요.`
+        : `${result.name}님, 가입을 환영해요! 이제 곡을 등록할 수 있어요.`);
+    } catch (error) {
+      showAlert(error instanceof Error ? error.message : "가입하지 못했어요.");
+    }
+  }
+
   function openCreateForm() {
     if (!currentUser) {
-      showAlert("먼저 상단의 '나는 누구?'에서 본인 이름을 선택해주세요.");
+      showAlert("먼저 상단의 '나는 누구?'에서 본인 이름을 선택해주세요. 처음이라면 '처음 왔어요'로 가입할 수 있어요.");
       return;
     }
     setEditingSong(null);
@@ -417,13 +448,20 @@ export default function Home() {
             <select
               id="current-user"
               value={currentUser}
-              onChange={(event) => changeCurrentUser(event.target.value)}
+              onChange={(event) => {
+                if (event.target.value === SIGNUP_OPTION) {
+                  setSignupOpen(true);
+                  return;
+                }
+                changeCurrentUser(event.target.value);
+              }}
               className="max-w-28 rounded-full border-2 border-[#2d2118] bg-white px-3 py-2 text-xs font-black shadow-[2px_2px_0_#2d2118] sm:max-w-none sm:text-sm"
             >
               <option value="">🙋 나는 누구?</option>
               {activeMembers.map((member) => (
                 <option key={member.id} value={member.name}>{member.name}</option>
               ))}
+              <option value={SIGNUP_OPTION}>➕ 처음 왔어요 (가입하기)</option>
             </select>
             <button type="button" onClick={() => setMemberManagementOpen(true)} className="rounded-full border-2 border-[#2d2118] bg-[#ffd85c] px-3 py-2 text-xs font-black shadow-[2px_2px_0_#2d2118] transition hover:-translate-y-0.5 sm:px-4 sm:text-sm">
               ⚙ 멤버 관리
@@ -903,6 +941,53 @@ export default function Home() {
               <div className="flex gap-3 pt-2">
                 <button type="button" onClick={closeForm} className="flex-1 rounded-full border border-[#1d201b]/15 px-5 py-3 font-bold">취소</button>
                 <button type="submit" className="flex-1 rounded-full bg-[#20271f] px-5 py-3 font-bold text-white">{editingSong ? "수정하기" : "등록하기"}</button>
+              </div>
+            </form>
+          </section>
+        </div>
+      )}
+
+      {signupOpen && (
+        <div className="fixed inset-0 z-50 grid place-items-end bg-[#12150f]/50 p-0 backdrop-blur-sm sm:place-items-center sm:p-6" role="presentation">
+          <section role="dialog" aria-modal="true" aria-labelledby="signup-title" className="max-h-[92vh] w-full overflow-y-auto rounded-t-[2rem] border-[#2d2118] bg-[#fff6df] p-6 shadow-2xl sm:max-w-md sm:rounded-[2rem] sm:border-2 sm:p-8">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-sm font-black tracking-[0.12em] text-[#c7442c]">JOIN THE BAND</p>
+                <h2 id="signup-title" className="mt-1 text-3xl font-semibold tracking-tight">멤버 가입</h2>
+                <p className="mt-2 text-sm leading-6 text-[#6e5848]">밴드에서 공유받은 참여 코드가 필요해요.</p>
+              </div>
+              <button type="button" onClick={() => setSignupOpen(false)} aria-label="가입 창 닫기" className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#ece7dc] text-xl">×</button>
+            </div>
+            <form onSubmit={submitSignup} className="mt-7 space-y-5">
+              <label className="grid gap-2 text-sm font-semibold">
+                이름 또는 별명
+                <input name="signupName" required maxLength={20} autoComplete="nickname" className="rounded-xl border border-[#1d201b]/15 bg-white px-4 py-3 font-normal outline-none focus:border-[#c7442c] focus:ring-2 focus:ring-[#c7442c]/15" />
+              </label>
+              <label className="grid gap-2 text-sm font-semibold">
+                주 포지션
+                <select name="signupPosition" required defaultValue="" className="rounded-xl border border-[#1d201b]/15 bg-white px-4 py-3 font-normal outline-none focus:border-[#c7442c] focus:ring-2 focus:ring-[#c7442c]/15">
+                  <option value="" disabled>선택해주세요</option>
+                  {positions.map((position) => <option key={position} value={position}>{position}</option>)}
+                </select>
+              </label>
+              <div className="grid gap-5 sm:grid-cols-2">
+                <label className="grid gap-2 text-sm font-semibold">
+                  개인 PIN
+                  <input name="signupPin" type="password" inputMode="numeric" minLength={6} maxLength={32} required autoComplete="new-password" placeholder="6자리 이상" className="rounded-xl border border-[#1d201b]/15 bg-white px-4 py-3 font-normal outline-none focus:border-[#c7442c] focus:ring-2 focus:ring-[#c7442c]/15" />
+                </label>
+                <label className="grid gap-2 text-sm font-semibold">
+                  PIN 확인
+                  <input name="signupPinConfirm" type="password" inputMode="numeric" minLength={6} maxLength={32} required autoComplete="new-password" className="rounded-xl border border-[#1d201b]/15 bg-white px-4 py-3 font-normal outline-none focus:border-[#c7442c] focus:ring-2 focus:ring-[#c7442c]/15" />
+                </label>
+              </div>
+              <span className="block text-xs leading-5 text-[#7a7f74]">PIN은 곡 등록·수정·삭제 때 본인 확인에 써요. 잊어버리면 관리자에게 초기화를 요청해야 하니 꼭 기억해주세요.</span>
+              <label className="grid gap-2 text-sm font-semibold">
+                밴드 참여 코드
+                <input name="signupJoinCode" type="password" required autoComplete="off" className="rounded-xl border border-[#1d201b]/15 bg-white px-4 py-3 font-normal outline-none focus:border-[#c7442c] focus:ring-2 focus:ring-[#c7442c]/15" />
+              </label>
+              <div className="grid grid-cols-2 gap-3 pt-2">
+                <button type="button" onClick={() => setSignupOpen(false)} className="rounded-full border-2 border-[#2d2118] bg-white px-5 py-3 font-bold">취소</button>
+                <button type="submit" className="rounded-full border-2 border-[#2d2118] bg-[#c7442c] px-5 py-3 font-bold text-white">가입하기</button>
               </div>
             </form>
           </section>

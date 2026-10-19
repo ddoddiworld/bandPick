@@ -16,6 +16,13 @@ npm run dev
 
 실행 후 브라우저에서 `http://localhost:3000`을 열면 됩니다.
 
+## 밴드 참여 코드 (`JOIN_CODE`)
+
+멤버 가입에는 밴드 공용 참여 코드가 필요하다.
+
+- 로컬: 프로젝트 루트에 `.dev.vars` 파일을 만들고 `JOIN_CODE=local-join-code`를 넣는다 (Git에 올라가지 않음, E2E 테스트도 이 값을 사용).
+- 프로덕션: `npx wrangler secret put JOIN_CODE`로 설정·교체한다. 설정 전에는 가입 API가 503을 반환한다.
+
 ## 주요 명령어
 
 ```bash
