@@ -35,6 +35,7 @@ test("server-renders the 피자집브레이크타임 home page", async () => {
   assert.match(html, /Don&#x27;t Look Back in Anger/);
   assert.match(html, /피자집브레이크타임/);
   assert.match(html, /곡 등록하기/);
+  assert.match(html, /본인 이름 선택/);
   assert.match(html, /Emily/);
   assert.match(html, /기타/);
   assert.match(html, /프로토타입 단계 미리보기/);
