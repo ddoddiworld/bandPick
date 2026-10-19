@@ -1,6 +1,6 @@
 const PIN_HASH_PREFIX = "pbkdf2_sha256";
 
-function decodeBase64(value: string): Uint8Array {
+function decodeBase64(value: string): Uint8Array<ArrayBuffer> {
   return Uint8Array.from(atob(value), (character) => character.charCodeAt(0));
 }
 
