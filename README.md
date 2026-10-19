@@ -22,7 +22,9 @@ npm run dev
 npm run dev          # 개발 서버 실행
 npm run lint         # 코드 검사
 npm run build        # 배포용 빌드 확인
-npm run test         # 자동 테스트
+npm run typecheck    # 타입 검사
+npm run test         # 타입 검사 + 빌드 + 자동 테스트
+npm run cf-typegen   # wrangler 설정 변경 후 Cloudflare 타입(worker-configuration.d.ts) 재생성
 npm run db:generate  # DB 마이그레이션 생성
 npm run db:setup:local # 로컬 D1 마이그레이션 및 테스트 데이터 준비
 ```
