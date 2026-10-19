@@ -27,6 +27,7 @@ npm run test         # 타입 검사 + 빌드 + 자동 테스트
 npm run cf-typegen   # wrangler 설정 변경 후 Cloudflare 타입(worker-configuration.d.ts) 재생성
 npm run db:generate  # DB 마이그레이션 생성
 npm run db:setup:local # 로컬 D1 마이그레이션 및 테스트 데이터 준비
+npm run deploy       # 원격 D1 마이그레이션 → 빌드 → Cloudflare Workers 배포 (wrangler login 필요)
 ```
 
 로컬 테스트 멤버의 공통 데모 PIN은 `021302`입니다. 데모 PIN은 로컬 테스트 데이터에만 사용하며 실제 배포 데이터에는 포함하지 않습니다.
