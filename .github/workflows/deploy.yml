@@ -1,46 +1,16 @@
-name: CI / Deploy
+name: Deploy
 
 on:
-  pull_request:
-    branches: [develop, main]
   push:
     branches: [main]
   workflow_dispatch:
 
 jobs:
-  check:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
-      - run: npm run lint
-      - run: npm test
-
-  e2e:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
-        with:
-          node-version: 22
-          cache: npm
-      - run: npm ci
-      - run: npx playwright install --with-deps chromium
-      - run: npm run test:e2e
-      - uses: actions/upload-artifact@v4
-        if: failure()
-        with:
-          name: playwright-report
-          path: playwright-report/
-          retention-days: 7
+  checks:
+    uses: ./.github/workflows/pr-check.yml
 
   deploy:
-    needs: [check, e2e]
-    if: github.event_name != 'pull_request'
+    needs: checks
     runs-on: ubuntu-latest
     environment: production
     permissions:
