@@ -152,7 +152,9 @@ export default function Home() {
       .catch(() => setNotice("저장된 데이터를 불러오지 못했어요."))
       .finally(() => {
         try {
-          setCurrentUser(localStorage.getItem(CURRENT_USER_KEY) ?? "");
+          const savedUser = localStorage.getItem(CURRENT_USER_KEY) ?? "";
+          // Keep a choice made while the data was still loading.
+          setCurrentUser((current) => current || savedUser);
         } catch {
           // Ignore unavailable storage.
         }
