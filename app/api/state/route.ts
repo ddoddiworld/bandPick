@@ -1,15 +1,18 @@
 import { asc, eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { members, roundMembers, songs, votes } from "@/db/schema";
+import { normalizeMemberName } from "@/lib/auth/member";
 import { positionLabels } from "@/lib/members";
 import { getCurrentRound } from "@/lib/services/current-round";
 
-export async function GET() {
+export async function GET(request: Request) {
   const db = await getDb();
   const round = await getCurrentRound();
+  // ponytail: "me" is the name chosen in the header, unauthenticated; a server session replaces this later.
+  const me = normalizeMemberName(new URL(request.url).searchParams.get("member") ?? "");
 
   if (!round) {
-    return Response.json({ round: null, members: [], songs: [] });
+    return Response.json({ round: null, members: [], songs: [], myVotes: {} });
   }
 
   const participantRows = await db
@@ -20,6 +23,7 @@ export async function GET() {
       role: members.role,
       isActive: members.isActive,
       pinReady: members.pinHash,
+      normalizedName: members.normalizedName,
     })
     .from(roundMembers)
     .innerJoin(members, eq(roundMembers.memberId, members.id))
@@ -42,17 +46,22 @@ export async function GET() {
     .orderBy(asc(songs.id));
 
   const voteRows = await db
-    .select({ songId: votes.songId, value: votes.value })
+    .select({ songId: votes.songId, memberId: votes.memberId, value: votes.value })
     .from(votes)
     .innerJoin(songs, eq(votes.songId, songs.id))
     .where(eq(songs.roundId, round.id));
 
   const totals = new Map<number, { likes: number; dislikes: number }>();
+  const votedCounts = new Map<number, number>();
+  const myId = participantRows.find((member) => member.normalizedName === me)?.id;
+  const myVotes: Record<number, "like" | "dislike"> = {};
   for (const vote of voteRows) {
     const total = totals.get(vote.songId) ?? { likes: 0, dislikes: 0 };
     if (vote.value === "like") total.likes += 1;
     else total.dislikes += 1;
     totals.set(vote.songId, total);
+    votedCounts.set(vote.memberId, (votedCounts.get(vote.memberId) ?? 0) + 1);
+    if (vote.memberId === myId) myVotes[vote.songId] = vote.value;
   }
 
   return Response.json({
@@ -74,6 +83,7 @@ export async function GET() {
       role: member.role,
       isActive: member.isActive,
       inviteStatus: member.pinReady ? "가입 완료" : "초대 대기",
+      votedCount: votedCounts.get(member.id) ?? 0,
     })),
     songs: songRows.map((song) => ({
       ...song,
@@ -82,5 +92,6 @@ export async function GET() {
       note: song.note ?? "",
       ...(totals.get(song.id) ?? { likes: 0, dislikes: 0 }),
     })),
+    myVotes,
   });
 }
