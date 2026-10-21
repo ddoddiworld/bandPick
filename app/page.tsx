@@ -17,6 +17,7 @@ type Member = {
   role: MemberRole;
   isActive: boolean;
   inviteStatus: "가입 완료" | "초대 대기";
+  votedCount?: number;
 };
 
 type Song = {
@@ -33,18 +34,20 @@ type Song = {
 
 type PersistedState = {
   round: null | {
+    status: RoundStatus;
     heroTitle: string;
     heroDescription: string;
   };
   members: Member[];
   songs: Song[];
+  myVotes: Record<number, VoteValue>;
 };
 
 const CURRENT_USER_KEY = "bandpick:current-user";
 const SIGNUP_OPTION = "__signup__";
 
-async function fetchPersistedState(): Promise<PersistedState> {
-  const response = await fetch("/api/state", { cache: "no-store" });
+async function fetchPersistedState(member: string): Promise<PersistedState> {
+  const response = await fetch(`/api/state?member=${encodeURIComponent(member)}`, { cache: "no-store" });
   if (!response.ok) throw new Error("저장된 데이터를 불러오지 못했어요.");
   return response.json() as Promise<PersistedState>;
 }
@@ -115,10 +118,15 @@ export default function Home() {
   // Display-only identity; the server re-checks name + PIN on every change.
   const [currentUser, setCurrentUser] = useState("");
   const [signupOpen, setSignupOpen] = useState(false);
+  const [voteTarget, setVoteTarget] = useState<{ song: Song; value: VoteValue } | null>(null);
+  // Kept in memory only for this visit so each vote does not re-ask the PIN.
+  const [votePin, setVotePin] = useState("");
   const activeMembers = members.filter((member) => member.isActive);
 
   function changeCurrentUser(name: string) {
     setCurrentUser(name);
+    setVotePin("");
+    void fetchPersistedState(name).then(applyPersistedState).catch(() => setVotes({}));
     try {
       localStorage.setItem(CURRENT_USER_KEY, name);
     } catch {
@@ -130,39 +138,40 @@ export default function Home() {
     // An empty database means nobody has signed up yet: show an empty band, not demo data.
     setMembers(state.members);
     setSongs(state.songs);
+    setVotes(state.myVotes ?? {});
     if (!state.round) return;
+    setStatus(state.round.status);
     setHeroTitle(state.round.heroTitle);
     setHeroDescription(state.round.heroDescription);
   }
 
   async function refreshPersistedState() {
     try {
-      applyPersistedState(await fetchPersistedState());
+      applyPersistedState(await fetchPersistedState(currentUser));
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "저장된 데이터를 불러오지 못했어요.");
     }
   }
 
   useEffect(() => {
-    void fetchPersistedState()
+    let savedUser = "";
+    try {
+      savedUser = localStorage.getItem(CURRENT_USER_KEY) ?? "";
+    } catch {
+      // Ignore unavailable storage.
+    }
+    void fetchPersistedState(savedUser)
       .then(applyPersistedState)
       .catch(() => setNotice("저장된 데이터를 불러오지 못했어요."))
-      .finally(() => {
-        try {
-          const savedUser = localStorage.getItem(CURRENT_USER_KEY) ?? "";
-          // Keep a choice made while the data was still loading.
-          setCurrentUser((current) => current || savedUser);
-        } catch {
-          // Ignore unavailable storage.
-        }
-      });
+      // Keep a choice made while the data was still loading.
+      .finally(() => setCurrentUser((current) => current || savedUser));
   }, []);
 
   function getSongMetrics(song: Song) {
     const myVote = votes[song.id];
     const isDemoSelectedSong = status === "closed" && song.id === 2;
-    const likeCount = isDemoSelectedSong ? activeMembers.length : song.likes + (myVote === "like" ? 1 : 0);
-    const dislikeCount = isDemoSelectedSong ? 0 : song.dislikes + (myVote === "dislike" ? 1 : 0);
+    const likeCount = isDemoSelectedSong ? activeMembers.length : song.likes;
+    const dislikeCount = isDemoSelectedSong ? 0 : song.dislikes;
     return {
       myVote,
       likeCount,
@@ -199,7 +208,7 @@ export default function Home() {
   const completedVoters = status === "closed"
     ? activeMembers.length
     : status === "voting"
-      ? Math.min(4, activeMembers.length)
+      ? activeMembers.filter((member) => songs.length > 0 && (member.votedCount ?? 0) >= songs.length).length
       : 0;
 
   function showAlert(message: string) {
@@ -346,9 +355,43 @@ export default function Home() {
     }
   }
 
-  function vote(songId: number, value: VoteValue) {
-    setVotes((current) => ({ ...current, [songId]: value }));
-    showAlert(value === "like" ? "좋아요를 선택했어요." : "싫어요를 선택했어요.");
+  function vote(song: Song, value: VoteValue) {
+    if (!currentUser) {
+      showAlert("투표하려면 먼저 본인 이름을 선택해주세요.");
+      return;
+    }
+    if (votes[song.id] === value) return;
+    if (votePin) {
+      void sendVote(song, value, votePin);
+      return;
+    }
+    setVoteTarget({ song, value });
+  }
+
+  async function sendVote(song: Song, value: VoteValue, pin: string) {
+    try {
+      const response = await fetch("/api/votes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ songId: song.id, voter: currentUser, pin, value }),
+      });
+      const result = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(result.error ?? "투표하지 못했어요.");
+      setVotePin(pin);
+      setVoteTarget(null);
+      await refreshPersistedState();
+      showAlert(value === "like" ? "좋아요를 선택했어요." : "싫어요를 선택했어요.");
+    } catch (error) {
+      setVotePin("");
+      showAlert(error instanceof Error ? error.message : "투표하지 못했어요.");
+    }
+  }
+
+  function confirmVote(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!voteTarget) return;
+    const pin = String(new FormData(event.currentTarget).get("votePin") ?? "");
+    void sendVote(voteTarget.song, voteTarget.value, pin);
   }
 
   function submitHeroSettings(event: FormEvent<HTMLFormElement>) {
@@ -682,7 +725,7 @@ export default function Home() {
                           <div className="flex gap-2">
                             <button
                               type="button"
-                              onClick={() => vote(song.id, "like")}
+                              onClick={() => vote(song, "like")}
                               aria-pressed={myVote === "like"}
                               className={`rounded-full px-4 py-2 text-sm font-bold transition ${myVote === "like" ? "bg-[#20271f] text-white" : "bg-[#edf3e5] text-[#3d5734] hover:bg-[#dcebcf]"}`}
                             >
@@ -690,7 +733,7 @@ export default function Home() {
                             </button>
                             <button
                               type="button"
-                              onClick={() => vote(song.id, "dislike")}
+                              onClick={() => vote(song, "dislike")}
                               aria-pressed={myVote === "dislike"}
                               className={`rounded-full px-4 py-2 text-sm font-bold transition ${myVote === "dislike" ? "bg-[#7b3023] text-white" : "bg-[#f7e9e5] text-[#884536] hover:bg-[#f1d7d0]"}`}
                             >
@@ -1039,6 +1082,27 @@ export default function Home() {
               <div className="mt-4 grid grid-cols-2 gap-3">
                 <button type="button" onClick={() => setDeleteTarget(null)} className="rounded-full border-2 border-[#2d2118] bg-white px-4 py-3 font-bold">취소</button>
                 <button type="submit" className="rounded-full border-2 border-[#2d2118] bg-[#c7442c] px-4 py-3 font-bold text-white">삭제하기</button>
+              </div>
+            </form>
+          </section>
+        </div>
+      )}
+
+      {voteTarget && (
+        <div className="fixed inset-0 z-[60] grid place-items-center bg-[#12150f]/55 p-5 backdrop-blur-sm" role="presentation">
+          <section role="alertdialog" aria-modal="true" aria-labelledby="vote-dialog-title" aria-describedby="vote-dialog-description" className="w-full max-w-sm rounded-[2rem] border-2 border-[#2d2118] bg-[#fff6df] p-6 text-center shadow-[7px_7px_0_#2d2118]">
+            <span className="mx-auto grid h-14 w-14 place-items-center rounded-full border-2 border-[#2d2118] bg-[#ffd85c] text-2xl" aria-hidden="true">{voteTarget.value === "like" ? "👍" : "👎"}</span>
+            <h2 id="vote-dialog-title" className="mt-5 text-2xl font-semibold tracking-tight">{voteTarget.value === "like" ? "좋아요" : "싫어요"}로 투표할까요?</h2>
+            <p id="vote-dialog-description" className="mt-3 break-keep text-sm leading-6 text-[#6e5848]">
+              <strong className="text-[#2d2118]">{voteTarget.song.artist} · {voteTarget.song.title}</strong><br />
+              {currentUser}님의 개인 PIN을 입력해주세요. 이번 방문 동안은 다시 묻지 않아요.
+            </p>
+            <form onSubmit={confirmVote} className="mt-5">
+              <label className="sr-only" htmlFor="vote-pin">개인 PIN</label>
+              <input id="vote-pin" name="votePin" type="password" inputMode="numeric" minLength={6} required autoFocus autoComplete="off" placeholder="개인 PIN 6자리 이상" className="w-full rounded-xl border border-[#1d201b]/15 bg-white px-4 py-3 text-center outline-none focus:border-[#c7442c] focus:ring-2 focus:ring-[#c7442c]/15" />
+              <div className="mt-4 grid grid-cols-2 gap-3">
+                <button type="button" onClick={() => setVoteTarget(null)} className="rounded-full border-2 border-[#2d2118] bg-white px-4 py-3 font-bold">취소</button>
+                <button type="submit" className="rounded-full border-2 border-[#2d2118] bg-[#2d2118] px-4 py-3 font-bold text-white">투표하기</button>
               </div>
             </form>
           </section>
